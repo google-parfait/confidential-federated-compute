@@ -29,9 +29,10 @@
 #include "containers/common/io/checkpoint_utils.h"
 #include "containers/common/io/tabular/input.h"
 #include "containers/common/io/tabular/row_set.h"
-#include "containers/fns/do_fn.h"
+#include "containers/fns/batch_do_fn.h"
 #include "containers/fns/fn.h"
 #include "fcp/confidentialcompute/constants.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
@@ -54,10 +55,6 @@ namespace {
 // returning zero or more
 //   than one value for an output column in a row (to be handled as repeats,
 //   outer join, etc.).
-//
-// - Switch the semantics to allow early processing before the Commit(), and
-// during a Write() if
-//   there's enough to fill an inference batch.
 //
 // - ...
 
@@ -105,6 +102,9 @@ struct BlobLevelWorkItem {
 
   google::protobuf::Any key;
   std::string blob_id;
+  // Associated metadata of the input blob, propagated to the output blob.
+  std::optional<fcp::confidentialcompute::AssociatedMetadata>
+      associated_metadata;
   std::unique_ptr<Input> input;
   std::vector<std::unique_ptr<TaskLevelWorkItem>> task_items;
 };
@@ -207,7 +207,7 @@ absl::Status UnpackCallsForTask(const Input& input, size_t max_prompt_size,
 // populated. output_columns is left empty, to be populated later by
 // CartesianExpand.
 absl::StatusOr<std::vector<TaskOutput>> ProcessTaskOutputs(
-    BlobLevelWorkItem* blob_item, Session::Context& context) {
+    BlobLevelWorkItem* blob_item, fns::BatchDoFn::DoContext& context) {
   const long num_rows = static_cast<long>(blob_item->input->GetRowCount());
   std::vector<TaskOutput> task_outputs;
   InferenceOutputProcessor output_processor;
@@ -232,8 +232,8 @@ absl::StatusOr<std::vector<TaskOutput>> ProcessTaskOutputs(
         LOG(WARNING) << "Failed to process inference output: "
                      << process_result.status()
                      << ". Skipping output for this row.";
-        ++context.GetCounters()
-              ["BatchedInferenceContainer-inference-output-processing-failed"];
+        context.IncrementCounter(
+            "BatchedInferenceContainer-inference-output-processing-failed");
         parsed_column.values.push_back(std::vector<std::string>());
         task_output.per_row_output_counts.push_back(0);
         continue;
@@ -384,19 +384,24 @@ absl::StatusOr<std::vector<size_t>> CartesianExpand(
   return input_row_duplication_counts;
 }
 
-// A class that batches all writes received until a Commit(), and then
-// issues a single call to the inference provider.
+// A BatchDoFn that accumulates all writes received until a Commit(), and then
+// issues batched calls to the inference provider.
 //
 // Currently implemented behavior and restrictions:
-// 1. One row in, one row out - we enforce the exact 1:1 correspondence.
+// 1. Each input row produces one or more output rows. If a task's parser
+//    yields multiple values for a row, the input row is duplicated once per
+//    combination of values across tasks (Cartesian product). A task that
+//    yields no values for a row contributes an empty string instead.
 // 2. If an inference call fails, it is skipped and logged. The output for
 //    that row will be filled with empty strings/padding, allowing the rest of
 //    the batch to proceed.
+// 3. Any non-empty associated metadata on an input blob is attached to the
+//    corresponding output blob.
 //
-// FUTURE WORK: Relax these restrictiosn. and port over the logic used in
+// FUTURE WORK: Relax these restrictions, and port over the logic used in
 // the FedSql container. Possibly make this behavior configurable.
 class BatchedInferenceFn final
-    : public confidential_federated_compute::fns::DoFn {
+    : public confidential_federated_compute::fns::BatchDoFn {
  public:
   explicit BatchedInferenceFn(
       std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
@@ -410,37 +415,44 @@ class BatchedInferenceFn final
 
   ~BatchedInferenceFn() {}
 
-  absl::Status Do(Session::KV kv, DoContext& context) override;
-
-  absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(
-      fcp::confidentialcompute::CommitRequest commit_request,
-      Context& context) override;
+  absl::Status Do(google::protobuf::Any config,
+                  std::vector<Session::KV> accumulated_inputs,
+                  DoContext& context) override;
 
  private:
+  absl::StatusOr<std::unique_ptr<BlobLevelWorkItem>> PrepareBlob(
+      Session::KV kv);
+
   absl::Status DoBatchedInferenceInternal(
-      const std::vector<CallLevelWorkItem*>& batch, Context& context);
+      const std::vector<CallLevelWorkItem*>& batch, DoContext& context);
 
-  absl::Status FinalizeBlob(BlobLevelWorkItem* blob_item, Context& context);
+  absl::Status FinalizeBlob(BlobLevelWorkItem* blob_item, DoContext& context);
 
-  absl::Status FinalizeAllBlobs(std::queue<BlobLevelWorkItem*>* blob_items,
-                                Context& context);
+  absl::Status FinalizeAllBlobs(
+      std::queue<std::unique_ptr<BlobLevelWorkItem>>* blob_items,
+      DoContext& context);
 
   absl::Status DoBatchedInferenceAndFinalizeAllBlobs(
       const std::vector<CallLevelWorkItem*>& batched_call_items,
-      std::queue<BlobLevelWorkItem*>* blob_items, Context& context);
+      std::queue<std::unique_ptr<BlobLevelWorkItem>>* blob_items,
+      DoContext& context);
 
   std::shared_ptr<BatchedInferenceEngine> batched_inference_engine_;
   InferenceConfiguration inference_config_;
   std::shared_ptr<MessageFactory> message_factory_;
   std::string on_device_query_name_;
-  std::vector<std::unique_ptr<BlobLevelWorkItem>> uncommitted_blob_items_;
 };
 
 // Failures caused by the inference configuration or by the contents of the
 // blob are reported as InvalidArgument. InternalError is reserved for
 // unexpected conditions that indicate a bug.
-absl::Status BatchedInferenceFn::Do(Session::KV kv, DoContext& context) {
+absl::StatusOr<std::unique_ptr<BlobLevelWorkItem>>
+BatchedInferenceFn::PrepareBlob(Session::KV kv) {
   auto blob_item = std::make_unique<BlobLevelWorkItem>(kv.key, kv.blob_id);
+  if (kv.associated_metadata.has_value() &&
+      kv.associated_metadata->metadata_size() > 0) {
+    blob_item->associated_metadata = std::move(kv.associated_metadata);
+  }
   absl::Status task_unpack_status =
       UnpackTasksForBlob(inference_config_, blob_item.get());
   if (!task_unpack_status.ok()) {
@@ -527,20 +539,19 @@ absl::Status BatchedInferenceFn::Do(Session::KV kv, DoContext& context) {
                        call_unpack_status.message()));
     }
   }
-  uncommitted_blob_items_.push_back(std::move(blob_item));
-  return absl::OkStatus();
+  return blob_item;
 }
 
-absl::StatusOr<fcp::confidentialcompute::CommitResponse>
-BatchedInferenceFn::Commit(
-    fcp::confidentialcompute::CommitRequest commit_request, Context& context) {
-  std::vector<std::unique_ptr<BlobLevelWorkItem>> uncommitted_blob_items;
-  std::swap(uncommitted_blob_items, uncommitted_blob_items_);
+absl::Status BatchedInferenceFn::Do(google::protobuf::Any config,
+                                    std::vector<Session::KV> accumulated_inputs,
+                                    DoContext& context) {
   const int batch_size =
       std::max(1, inference_config_.runtime_config().max_batch_size());
-  std::queue<BlobLevelWorkItem*> pending_blob_items;
+  std::queue<std::unique_ptr<BlobLevelWorkItem>> pending_blob_items;
   std::vector<CallLevelWorkItem*> batched_call_items;
-  for (auto& blob_item : uncommitted_blob_items) {
+  for (Session::KV& kv : accumulated_inputs) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<BlobLevelWorkItem> blob_item,
+                          PrepareBlob(std::move(kv)));
     for (auto& task_item : blob_item->task_items) {
       for (auto& call_item : task_item->call_items) {
         batched_call_items.push_back(call_item.get());
@@ -550,53 +561,35 @@ BatchedInferenceFn::Commit(
               " iterms for batch size of ", batch_size));
         }
         if (batched_call_items.size() == batch_size) {
-          absl::Status inference_and_finalize_status =
-              DoBatchedInferenceAndFinalizeAllBlobs(
-                  batched_call_items, &pending_blob_items, context);
-          if (!inference_and_finalize_status.ok()) {
-            return inference_and_finalize_status;
-          }
+          ABSL_RETURN_IF_ERROR(DoBatchedInferenceAndFinalizeAllBlobs(
+              batched_call_items, &pending_blob_items, context));
           batched_call_items.clear();
         }
       }
     }
     if (batched_call_items.empty()) {
-      absl::Status finalize_status = FinalizeBlob(blob_item.get(), context);
-      if (!finalize_status.ok()) {
-        return finalize_status;
-      }
+      ABSL_RETURN_IF_ERROR(FinalizeBlob(blob_item.get(), context));
     } else {
-      pending_blob_items.push(blob_item.get());
+      pending_blob_items.push(std::move(blob_item));
     }
   }
   if (!batched_call_items.empty()) {
-    absl::Status inference_and_finalize_status =
-        DoBatchedInferenceAndFinalizeAllBlobs(batched_call_items,
-                                              &pending_blob_items, context);
-    if (!inference_and_finalize_status.ok()) {
-      return inference_and_finalize_status;
-    }
-  }
-  return fcp::confidentialcompute::CommitResponse();
-}
-
-absl::Status BatchedInferenceFn::DoBatchedInferenceAndFinalizeAllBlobs(
-    const std::vector<CallLevelWorkItem*>& batched_call_items,
-    std::queue<BlobLevelWorkItem*>* blob_items, Context& context) {
-  absl::Status inference_status =
-      DoBatchedInferenceInternal(batched_call_items, context);
-  if (!inference_status.ok()) {
-    return inference_status;
-  }
-  absl::Status finalize_status = FinalizeAllBlobs(blob_items, context);
-  if (!finalize_status.ok()) {
-    return finalize_status;
+    ABSL_RETURN_IF_ERROR(DoBatchedInferenceAndFinalizeAllBlobs(
+        batched_call_items, &pending_blob_items, context));
   }
   return absl::OkStatus();
 }
 
+absl::Status BatchedInferenceFn::DoBatchedInferenceAndFinalizeAllBlobs(
+    const std::vector<CallLevelWorkItem*>& batched_call_items,
+    std::queue<std::unique_ptr<BlobLevelWorkItem>>* blob_items,
+    DoContext& context) {
+  ABSL_RETURN_IF_ERROR(DoBatchedInferenceInternal(batched_call_items, context));
+  return FinalizeAllBlobs(blob_items, context);
+}
+
 absl::Status BatchedInferenceFn::DoBatchedInferenceInternal(
-    const std::vector<CallLevelWorkItem*>& batch, Context& context) {
+    const std::vector<CallLevelWorkItem*>& batch, DoContext& context) {
   std::vector<std::string> prompts;
   for (CallLevelWorkItem* call_item : batch) {
     prompts.push_back(call_item->prompt);
@@ -615,21 +608,21 @@ absl::Status BatchedInferenceFn::DoBatchedInferenceInternal(
       }
       LOG(WARNING) << "Inference failed with skippable error: "
                    << results[i].status();
-      ++context.GetCounters()["BatchedInferenceContainer-inference-failed"];
+      context.IncrementCounter("BatchedInferenceContainer-inference-failed");
       batch[i]->result = "";
       continue;
     }
     batch[i]->result = *results[i];
     if (batch[i]->result.empty()) {
-      ++context.GetCounters()
-            ["BatchedInferenceContainer-empty-inference-response"];
+      context.IncrementCounter(
+          "BatchedInferenceContainer-empty-inference-response");
     }
   }
   return absl::OkStatus();
 }
 
 absl::Status BatchedInferenceFn::FinalizeBlob(BlobLevelWorkItem* blob_item,
-                                              Context& context) {
+                                              DoContext& context) {
   const long num_rows = static_cast<long>(blob_item->input->GetRowCount());
 
   // Process all task outputs and parse each inference result.
@@ -699,21 +692,20 @@ absl::Status BatchedInferenceFn::FinalizeBlob(BlobLevelWorkItem* blob_item,
   // FUTURE WORK(b/452094015): Consider making this behavior configurable
   // if needed.
   std::string flattened_output(checkpoint_or->Flatten());
-  if (!context.EmitEncrypted(
-          0, Session::KV{blob_item->key, std::move(flattened_output),
-                         blob_item->blob_id})) {
+  Session::KV output{blob_item->key, std::move(flattened_output),
+                     blob_item->blob_id};
+  output.associated_metadata = std::move(blob_item->associated_metadata);
+  if (!context.EmitEncrypted(0, std::move(output))) {
     return absl::InternalError("EmitEncrypted failed");
   }
   return absl::OkStatus();
 }
 
 absl::Status BatchedInferenceFn::FinalizeAllBlobs(
-    std::queue<BlobLevelWorkItem*>* blob_items, Context& context) {
+    std::queue<std::unique_ptr<BlobLevelWorkItem>>* blob_items,
+    DoContext& context) {
   while (!blob_items->empty()) {
-    absl::Status status = FinalizeBlob(blob_items->front(), context);
-    if (!status.ok()) {
-      return status;
-    }
+    ABSL_RETURN_IF_ERROR(FinalizeBlob(blob_items->front().get(), context));
     blob_items->pop();
   }
   return absl::OkStatus();

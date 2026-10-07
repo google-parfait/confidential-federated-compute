@@ -28,6 +28,8 @@
 #include "containers/session.h"
 #include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/descriptor.h"
@@ -46,6 +48,8 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::Session;
 using ::fcp::confidential_compute::kPrivacyIdColumnName;
+using ::fcp::confidentialcompute::AssociatedMetadata;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::StreamInitializeRequest;
@@ -95,8 +99,8 @@ std::shared_ptr<MessageFactory> CreateTestLogEntryMessageFactory() {
 }
 
 // Creates a BatchedInferenceFn with the default test inference config, writes
-// `data` to it as a single blob, and returns the status of the write.
-absl::Status WriteSingleBlob(
+// `data` to it as a single blob, commits, and returns the first error status.
+absl::Status WriteAndCommitSingleBlob(
     std::string data, std::shared_ptr<MessageFactory> message_factory = nullptr,
     std::string on_device_query_name = "") {
   auto factory = CreateBatchedInferenceFnFactory(
@@ -112,8 +116,14 @@ absl::Status WriteSingleBlob(
       ->mutable_unencrypted()
       ->set_blob_id("blob1");
   *write_request.mutable_first_request_configuration() = Any();
+  absl::Status write_status =
+      fn.value()->Write(write_request, std::move(data), mock_context).status();
+  if (!write_status.ok()) {
+    return write_status;
+  }
+  // Inputs are buffered on Write() and only parsed on Commit().
   return fn.value()
-      ->Write(write_request, std::move(data), mock_context)
+      ->Commit(fcp::confidentialcompute::CommitRequest(), mock_context)
       .status();
 }
 
@@ -942,7 +952,7 @@ TEST_F(BatchedInferenceFnTest, TensorCheckpointWithNonScalarPrivacyIdFails) {
   absl::StatusOr<absl::Cord> input = builder->Build();
   ASSERT_THAT(input.status(), IsOk());
 
-  EXPECT_THAT(WriteSingleBlob(std::string(input->Flatten())),
+  EXPECT_THAT(WriteAndCommitSingleBlob(std::string(input->Flatten())),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("must be a scalar")));
 }
@@ -959,13 +969,13 @@ TEST_F(BatchedInferenceFnTest, TensorCheckpointWithDifferingRowCountsFails) {
   absl::StatusOr<absl::Cord> input = builder->Build();
   ASSERT_THAT(input.status(), IsOk());
 
-  EXPECT_THAT(WriteSingleBlob(std::string(input->Flatten())),
+  EXPECT_THAT(WriteAndCommitSingleBlob(std::string(input->Flatten())),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("same number of rows")));
 }
 
 TEST_F(BatchedInferenceFnTest, InvalidCheckpointFails) {
-  EXPECT_THAT(WriteSingleBlob("invalid checkpoint"),
+  EXPECT_THAT(WriteAndCommitSingleBlob("invalid checkpoint"),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Failed to construct a checkpoint parser")));
 }
@@ -973,11 +983,102 @@ TEST_F(BatchedInferenceFnTest, InvalidCheckpointFails) {
 TEST_F(BatchedInferenceFnTest, MessageCheckpointWithoutEntriesFails) {
   // A tensor-based checkpoint doesn't have the `my_query/entry` tensor.
   EXPECT_THAT(
-      WriteSingleBlob(
+      WriteAndCommitSingleBlob(
           testing::GetPrivateInferenceInputCheckpointForTest({"bark"}),
           CreateTestLogEntryMessageFactory(), "my_query"),
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Failed to create input from message checkpoint")));
+}
+
+TEST_F(BatchedInferenceFnTest, PropagatesAssociatedMetadataPerBlob) {
+  InferenceConfiguration config = testing::GetInferenceConfigForTest();
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  // blob1 carries associated metadata, blob2 does not.
+  BlobHeader header;
+  header.set_blob_id("header_blob_id");
+  AssociatedMetadata assoc_metadata;
+  assoc_metadata.add_metadata()->PackFrom(header);
+  WriteRequest write_request_1;
+  auto* hpke_plus_aead_data = write_request_1.mutable_first_request_metadata()
+                                  ->mutable_hpke_plus_aead_data();
+  hpke_plus_aead_data->set_blob_id("blob1");
+  hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(assoc_metadata);
+  ASSERT_THAT(
+      fn.value()
+          ->Write(write_request_1,
+                  testing::GetPrivateInferenceInputCheckpointForTest({"bark"}),
+                  mock_context)
+          .status(),
+      IsOk());
+  WriteRequest write_request_2;
+  write_request_2.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob2");
+  ASSERT_THAT(
+      fn.value()
+          ->Write(write_request_2,
+                  testing::GetPrivateInferenceInputCheckpointForTest({"oink"}),
+                  mock_context)
+          .status(),
+      IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_))
+      .WillRepeatedly([](std::vector<std::string> prompts) {
+        std::vector<absl::StatusOr<std::string>> results;
+        for (const auto& prompt : prompts) {
+          results.push_back("Processed: " + prompt);
+        }
+        return results;
+      });
+
+  std::vector<Session::KV> emitted;
+  EXPECT_CALL(mock_context, EmitEncrypted(0, _))
+      .Times(2)
+      .WillRepeatedly([&emitted](int, Session::KV kv) {
+        emitted.push_back(std::move(kv));
+        return true;
+      });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  absl::StatusOr<CommitResponse> commit_result =
+      fn.value()->Commit(commit_request, mock_context);
+  ASSERT_THAT(commit_result.status(), IsOk());
+  EXPECT_EQ(commit_result->stats().num_inputs_committed(), 2);
+
+  ASSERT_EQ(emitted.size(), 2);
+  EXPECT_EQ(emitted[0].blob_id, "blob1");
+  ASSERT_TRUE(emitted[0].associated_metadata.has_value());
+  ASSERT_EQ(emitted[0].associated_metadata->metadata_size(), 1);
+  BlobHeader emitted_header;
+  ASSERT_TRUE(
+      emitted[0].associated_metadata->metadata(0).UnpackTo(&emitted_header));
+  EXPECT_EQ(emitted_header.blob_id(), "header_blob_id");
+
+  EXPECT_EQ(emitted[1].blob_id, "blob2");
+  EXPECT_FALSE(emitted[1].associated_metadata.has_value());
+}
+TEST_F(BatchedInferenceFnTest, CommitWithNoWritesSucceeds) {
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(
+      mock_engine, testing::GetInferenceConfigForTest());
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(_)).Times(0);
+  EXPECT_CALL(mock_context, EmitEncrypted(_, _)).Times(0);
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
 }
 
 }  // namespace
