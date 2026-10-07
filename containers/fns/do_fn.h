@@ -51,9 +51,12 @@ class DoFn : public Fn {
   // metadata, counters) remain accessible.
   class DoContext : public FnContext {
    public:
-    DoContext(Context& session_context,
-              fcp::confidentialcompute::AssociatedMetadata metadata)
-        : FnContext(session_context, std::move(metadata)) {}
+    DoContext(
+        Context& session_context,
+        fcp::confidentialcompute::AssociatedMetadata metadata,
+        fcp::confidentialcompute::ProtectedMetadata protected_metadata = {})
+        : FnContext(session_context, std::move(metadata),
+                    std::move(protected_metadata)) {}
 
    private:
     // Hide EmitReleasable from Do() callers.
@@ -65,7 +68,8 @@ class DoFn : public Fn {
   //
   // Any associated metadata from the input is captured in FnContext and
   // automatically attached to emitted outputs (unless explicitly specified on
-  // the emitted Session::KV).
+  // the emitted Session::KV). Any protected metadata from the input is captured
+  // in FnContext and bundled with encrypted outputs (see FnContext).
   //
   // Returns an error status if an error occurred and the Fn should be aborted.
   // This is equivalent to calling AbortReplica in Flume. Metrics about
@@ -73,9 +77,12 @@ class DoFn : public Fn {
   // DoContext::IncrementCounter or DoContext::IncrementCounterBy.
   virtual absl::Status Do(KV input, DoContext& context) = 0;
 
+  using Fn::Write;
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,
-      std::string unencrypted_data, Context& context) override final;
+      std::string unencrypted_data,
+      fcp::confidentialcompute::ProtectedMetadata protected_metadata,
+      Context& context) override final;
 
   // A no-op by default.
   virtual absl::StatusOr<fcp::confidentialcompute::CommitResponse> Commit(

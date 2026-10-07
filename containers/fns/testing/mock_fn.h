@@ -39,8 +39,11 @@ class MockFn : public Fn {
   MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>),
               Write,
               (fcp::confidentialcompute::WriteRequest write_request,
-               std::string unencrypted_data, Context& context),
+               std::string unencrypted_data,
+               fcp::confidentialcompute::ProtectedMetadata protected_metadata,
+               Context& context),
               (override));
+  using Fn::Write;
   MOCK_METHOD((absl::StatusOr<fcp::confidentialcompute::CommitResponse>),
               Commit,
               (fcp::confidentialcompute::CommitRequest commit_request,

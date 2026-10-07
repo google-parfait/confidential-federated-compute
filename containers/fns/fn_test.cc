@@ -20,6 +20,8 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
+#include "containers/common/io/any_bundle.h"
 #include "containers/fns/testing/mock_fn.h"
 #include "containers/session.h"
 #include "containers/testing/mocks.h"
@@ -41,6 +43,7 @@ using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
 using ::fcp::confidentialcompute::FinalizeRequest;
+using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
@@ -300,6 +303,203 @@ TEST_F(FnTest, IncrementCounterByAmount) {
 
   EXPECT_EQ(mock_context_.counters_["my_counter_a"], 30);
   EXPECT_EQ(mock_context_.counters_["my_counter_b"], 15);
+}
+
+ProtectedMetadata CreateProtectedMetadata(const std::string& blob_id) {
+  BlobHeader header;
+  header.set_blob_id(blob_id);
+  ProtectedMetadata metadata;
+  metadata.add_metadata()->PackFrom(header);
+  return metadata;
+}
+
+TEST_F(FnTest, ProtectedMetadataAccessors) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata(),
+                           CreateProtectedMetadata("protected_blob"));
+
+  BlobHeader unpacked;
+  ASSERT_TRUE(fn_context.UnpackProtectedMetadata(&unpacked));
+  EXPECT_EQ(unpacked.blob_id(), "protected_blob");
+  // Protected and associated metadata are independent.
+  EXPECT_FALSE(fn_context.UnpackMetadata(&unpacked));
+
+  BlobHeader replacement;
+  replacement.set_blob_id("replacement");
+  fn_context.PackProtectedMetadata(replacement);
+  ASSERT_TRUE(fn_context.UnpackProtectedMetadata(&unpacked));
+  EXPECT_EQ(unpacked.blob_id(), "replacement");
+
+  fn_context.RemoveProtectedMetadata<BlobHeader>();
+  EXPECT_FALSE(fn_context.UnpackProtectedMetadata(&unpacked));
+
+  fn_context.PackProtectedMetadata(replacement);
+  fn_context.ClearProtectedMetadata();
+  EXPECT_FALSE(fn_context.UnpackProtectedMetadata(&unpacked));
+}
+
+// Unbundles the protected metadata from an emitted KV's data.
+ProtectedMetadata UnbundleEmitted(Session::KV& kv) {
+  ProtectedMetadata metadata;
+  absl::Cord data(kv.data);
+  EXPECT_TRUE(UnbundleAny(metadata, data));
+  kv.data = std::string(data);
+  return metadata;
+}
+
+std::string BlobIdOf(const ProtectedMetadata& metadata) {
+  BlobHeader header;
+  EXPECT_EQ(metadata.metadata_size(), 1);
+  EXPECT_TRUE(metadata.metadata(0).UnpackTo(&header));
+  return header.blob_id();
+}
+
+WriteRequest CreateEncryptedWriteRequest() {
+  WriteRequest request;
+  request.mutable_first_request_metadata()->mutable_hpke_plus_aead_data();
+  return request;
+}
+
+TEST_F(FnTest, EmitEncryptedBundlesProtectedMetadata) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata(),
+                           CreateProtectedMetadata("protected_blob"));
+  Session::KV emitted_kv;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
+  // The metadata is bundled into the data.
+  EXPECT_EQ(BlobIdOf(UnbundleEmitted(emitted_kv)), "protected_blob");
+  EXPECT_EQ(emitted_kv.data, "output_data");
+  // No associated metadata on the context, so none is attached.
+  EXPECT_FALSE(emitted_kv.associated_metadata.has_value());
+}
+
+TEST_F(FnTest, EmitEncryptedUsesCurrentContextProtectedMetadata) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata(),
+                           CreateProtectedMetadata("first_blob"));
+  Session::KV first_kv;
+  Session::KV second_kv;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&first_kv), Return(true)))
+      .WillOnce(DoAll(SaveArg<1>(&second_kv), Return(true)));
+
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("first")));
+  BlobHeader second_header;
+  second_header.set_blob_id("second_blob");
+  fn_context.PackProtectedMetadata(second_header);
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("second")));
+
+  EXPECT_EQ(BlobIdOf(UnbundleEmitted(first_kv)), "first_blob");
+  EXPECT_EQ(first_kv.data, "first");
+  EXPECT_EQ(BlobIdOf(UnbundleEmitted(second_kv)), "second_blob");
+  EXPECT_EQ(second_kv.data, "second");
+}
+
+TEST_F(FnTest, EmitEncryptedAfterClearProtectedMetadataIsNotBundled) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata(),
+                           CreateProtectedMetadata("context_blob"));
+  Session::KV emitted_kv;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+
+  fn_context.ClearProtectedMetadata();
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
+  // Not bundled.
+  EXPECT_EQ(emitted_kv.data, "output_data");
+}
+
+TEST_F(FnTest, EmitEncryptedWithoutProtectedMetadataIsNotBundled) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata());
+  Session::KV emitted_kv;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
+  EXPECT_EQ(emitted_kv.data, "output_data");
+}
+
+TEST_F(FnTest, EmitUnencryptedDoesNotIncludeProtectedMetadata) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata(),
+                           CreateProtectedMetadata("protected_blob"));
+  Session::KV emitted_kv;
+  EXPECT_CALL(mock_context_, EmitUnencrypted(_))
+      .WillOnce(DoAll(SaveArg<0>(&emitted_kv), Return(true)));
+
+  EXPECT_TRUE(fn_context.EmitUnencrypted(Session::KV("output_data")));
+  EXPECT_EQ(emitted_kv.data, "output_data");
+}
+
+TEST_F(FnTest, WriteUnbundlesProtectedMetadataFromEncryptedInput) {
+  MockFn session;
+  ProtectedMetadata received;
+  EXPECT_CALL(session, Write(_, "payload", _, _))
+      .WillOnce(DoAll(SaveArg<2>(&received), Return(WriteFinishedResponse())));
+
+  std::string bundle(BundleAny(CreateProtectedMetadata("protected_blob"),
+                               absl::Cord("payload")));
+  Session& base = session;
+  EXPECT_THAT(base.Write(CreateEncryptedWriteRequest(), bundle, mock_context_),
+              IsOk());
+  EXPECT_EQ(BlobIdOf(received), "protected_blob");
+}
+
+TEST_F(FnTest, WriteForwardsLegacyEncryptedInputUnchanged) {
+  MockFn session;
+  ProtectedMetadata received = CreateProtectedMetadata("should_be_cleared");
+  EXPECT_CALL(session, Write(_, "data", _, _))
+      .WillOnce(DoAll(SaveArg<2>(&received), Return(WriteFinishedResponse())));
+
+  Session& base = session;
+  EXPECT_THAT(base.Write(CreateEncryptedWriteRequest(), "data", mock_context_),
+              IsOk());
+  EXPECT_EQ(received.metadata_size(), 0);
+}
+
+TEST_F(FnTest, WriteForwardsOtherBundleTypeUnchanged) {
+  MockFn session;
+  BlobHeader other;
+  other.set_blob_id("not protected metadata");
+  std::string bundle(BundleAny(other, absl::Cord("payload")));
+  ProtectedMetadata received = CreateProtectedMetadata("should_be_cleared");
+  EXPECT_CALL(session, Write(_, bundle, _, _))
+      .WillOnce(DoAll(SaveArg<2>(&received), Return(WriteFinishedResponse())));
+
+  Session& base = session;
+  EXPECT_THAT(base.Write(CreateEncryptedWriteRequest(), bundle, mock_context_),
+              IsOk());
+  EXPECT_EQ(received.metadata_size(), 0);
+}
+
+TEST_F(FnTest, WriteDoesNotUnbundleUnencryptedInput) {
+  MockFn session;
+  std::string bundle(BundleAny(CreateProtectedMetadata("protected_blob"),
+                               absl::Cord("payload")));
+  ProtectedMetadata received = CreateProtectedMetadata("should_be_cleared");
+  EXPECT_CALL(session, Write(_, bundle, _, _))
+      .WillOnce(DoAll(SaveArg<2>(&received), Return(WriteFinishedResponse())));
+
+  Session& base = session;
+  EXPECT_THAT(base.Write(WriteRequest(), bundle, mock_context_), IsOk());
+  EXPECT_EQ(received.metadata_size(), 0);
+}
+
+TEST_F(FnTest, EmitEncryptedThenWriteRoundTrip) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata(),
+                           CreateProtectedMetadata("protected_blob"));
+  Session::KV emitted_kv;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
+
+  MockFn session;
+  ProtectedMetadata received;
+  EXPECT_CALL(session, Write(_, "output_data", _, _))
+      .WillOnce(DoAll(SaveArg<2>(&received), Return(WriteFinishedResponse())));
+  Session& base = session;
+  EXPECT_THAT(
+      base.Write(CreateEncryptedWriteRequest(), emitted_kv.data, mock_context_),
+      IsOk());
+  EXPECT_EQ(BlobIdOf(received), "protected_blob");
 }
 
 }  // namespace
