@@ -185,7 +185,7 @@ TEST_F(MapFnTest, WritePropagatesProtectedMetadataToOutput) {
       .WillOnce([](Session::KV input,
                    MapFn::MapContext& context) -> absl::StatusOr<Session::KV> {
         BlobMetadata unpacked;
-        EXPECT_TRUE(context.UnpackProtectedMetadata(&unpacked));
+        EXPECT_TRUE(context.protected_metadata().Unpack(&unpacked));
         return Session::KV("output_data");
       });
   Session::KV emitted_kv;

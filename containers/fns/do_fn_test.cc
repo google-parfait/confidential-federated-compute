@@ -156,7 +156,7 @@ TEST_F(DoFnTest, WritePropagatesProtectedMetadata) {
   EXPECT_CALL(*session_, Do(_, _))
       .WillOnce([](DoFn::KV input, DoFn::DoContext& context) {
         BlobMetadata unpacked;
-        EXPECT_TRUE(context.UnpackProtectedMetadata(&unpacked));
+        EXPECT_TRUE(context.protected_metadata().Unpack(&unpacked));
         EXPECT_EQ(unpacked.total_size_bytes(), 42);
         context.EmitEncrypted(0, std::move(input));
         return absl::OkStatus();

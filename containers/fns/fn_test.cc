@@ -54,6 +54,14 @@ using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::StrictMock;
 
+// Like SaveArg<k>, but unpacks the AssociatedMetadata packed into the Any
+// argument passed to Session::Context::EmitEncrypted.
+template <size_t k>
+auto SaveAssociatedMetadataArg(AssociatedMetadata* metadata) {
+  return testing::WithArg<k>(
+      [metadata](const Any& any) { EXPECT_TRUE(any.UnpackTo(metadata)); });
+}
+
 AssociatedMetadata CreateMetadata(const std::string& blob_id,
                                   const std::string& key_id) {
   BlobHeader header;
@@ -69,7 +77,7 @@ class FnTest : public testing::Test {
   StrictMock<MockContext> mock_context_;
 };
 
-TEST_F(FnTest, UnpackMetadataMatches) {
+TEST_F(FnTest, UnpackAssociatedMetadataMatches) {
   BlobHeader header;
   header.set_blob_id("test_blob");
   header.set_key_id("test_key");
@@ -78,106 +86,126 @@ TEST_F(FnTest, UnpackMetadataMatches) {
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
 
   BlobHeader unpacked;
-  ASSERT_TRUE(fn_context.UnpackMetadata(&unpacked));
+  ASSERT_TRUE(fn_context.associated_metadata().Unpack(&unpacked));
   EXPECT_EQ(unpacked.blob_id(), "test_blob");
   EXPECT_EQ(unpacked.key_id(), "test_key");
 }
 
-TEST_F(FnTest, UnpackMetadataNotFound) {
+TEST_F(FnTest, UnpackAssociatedMetadataNotFound) {
   AssociatedMetadata metadata;
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
   BlobHeader unpacked;
-  EXPECT_FALSE(fn_context.UnpackMetadata(&unpacked));
+  EXPECT_FALSE(fn_context.associated_metadata().Unpack(&unpacked));
 }
 
-TEST_F(FnTest, PackMetadataNewEntry) {
+TEST_F(FnTest, PackAssociatedMetadataNewEntry) {
   AssociatedMetadata metadata;
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
   BlobHeader header;
   header.set_blob_id("new_blob");
-  fn_context.PackMetadata(header);
+  fn_context.associated_metadata().Pack(header);
 
   BlobHeader unpacked;
-  ASSERT_TRUE(fn_context.UnpackMetadata(&unpacked));
+  ASSERT_TRUE(fn_context.associated_metadata().Unpack(&unpacked));
   EXPECT_EQ(unpacked.blob_id(), "new_blob");
 }
 
-TEST_F(FnTest, PackMetadataOverwritesExistingEntry) {
+TEST_F(FnTest, PackAssociatedMetadataOverwritesExistingEntry) {
   AssociatedMetadata metadata = CreateMetadata("blob_id_1", "key_id_1");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
   BlobHeader new_header;
   new_header.set_blob_id("blob_id_2");
   new_header.set_key_id("key_id_2");
-  fn_context.PackMetadata(new_header);
+  fn_context.associated_metadata().Pack(new_header);
 
   BlobHeader unpacked;
-  ASSERT_TRUE(fn_context.UnpackMetadata(&unpacked));
+  ASSERT_TRUE(fn_context.associated_metadata().Unpack(&unpacked));
   EXPECT_EQ(unpacked.blob_id(), "blob_id_2");
   EXPECT_EQ(unpacked.key_id(), "key_id_2");
 }
 
-TEST_F(FnTest, RemoveMetadataExplicitType) {
+TEST_F(FnTest, RemoveAssociatedMetadataExplicitType) {
   AssociatedMetadata metadata = CreateMetadata("blob_id", "key_id");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
-  fn_context.RemoveMetadata<BlobHeader>();
+  fn_context.associated_metadata().Remove<BlobHeader>();
   BlobHeader unpacked;
-  EXPECT_FALSE(fn_context.UnpackMetadata(&unpacked));
+  EXPECT_FALSE(fn_context.associated_metadata().Unpack(&unpacked));
 }
 
-TEST_F(FnTest, RemoveMetadataWithObject) {
+TEST_F(FnTest, RemoveAssociatedMetadataWithObject) {
   AssociatedMetadata metadata = CreateMetadata("blob_id", "key_id");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
-  fn_context.RemoveMetadata(BlobHeader{});
+  fn_context.associated_metadata().Remove(BlobHeader{});
   BlobHeader unpacked;
-  EXPECT_FALSE(fn_context.UnpackMetadata(&unpacked));
+  EXPECT_FALSE(fn_context.associated_metadata().Unpack(&unpacked));
 }
 
-TEST_F(FnTest, ClearMetadata) {
+TEST_F(FnTest, ClearAssociatedMetadata) {
   AssociatedMetadata metadata = CreateMetadata("blob_id", "key_id");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
-  fn_context.ClearMetadata();
+  fn_context.associated_metadata().Clear();
   BlobHeader unpacked;
-  EXPECT_FALSE(fn_context.UnpackMetadata(&unpacked));
+  EXPECT_FALSE(fn_context.associated_metadata().Unpack(&unpacked));
 }
 
-TEST_F(FnTest, EmitEncryptedAttachesMetadataToKV) {
+TEST_F(FnTest, EmitEncryptedPassesMetadata) {
   AssociatedMetadata metadata = CreateMetadata("blob_id", "key_id");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
   Session::KV emitted_kv;
-  EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
-      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+  AssociatedMetadata emitted_metadata;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv),
+                      SaveAssociatedMetadataArg<2>(&emitted_metadata),
+                      Return(true)));
 
   Session::KV output;
   output.data = "output_data";
   EXPECT_TRUE(fn_context.EmitEncrypted(0, std::move(output)));
-  ASSERT_TRUE(emitted_kv.associated_metadata.has_value());
-  EXPECT_EQ(emitted_kv.associated_metadata->metadata_size(), 1);
+  EXPECT_EQ(emitted_kv.data, "output_data");
+  ASSERT_EQ(emitted_metadata.metadata_size(), 1);
   BlobHeader unpacked;
-  EXPECT_TRUE(emitted_kv.associated_metadata->metadata(0).UnpackTo(&unpacked));
+  EXPECT_TRUE(emitted_metadata.metadata(0).UnpackTo(&unpacked));
   EXPECT_EQ(unpacked.blob_id(), "blob_id");
 }
 
-TEST_F(FnTest, EmitEncryptedDoesNotOverrideExplicitMetadata) {
+TEST_F(FnTest, EmitEncryptedPassesModifiedMetadata) {
   AssociatedMetadata input_metadata =
       CreateMetadata("input_blob_id", "input_key_id");
   Fn::FnContext fn_context(mock_context_, std::move(input_metadata));
-  AssociatedMetadata explicit_metadata =
-      CreateMetadata("explicit_blob_id", "explicit_key_id");
+  BlobHeader replacement;
+  replacement.set_blob_id("replacement_blob_id");
+  fn_context.associated_metadata().Pack(replacement);
+  AssociatedMetadata emitted_metadata;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _, _))
+      .WillOnce(
+          DoAll(SaveAssociatedMetadataArg<2>(&emitted_metadata), Return(true)));
+
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
+  ASSERT_EQ(emitted_metadata.metadata_size(), 1);
+  BlobHeader unpacked;
+  EXPECT_TRUE(emitted_metadata.metadata(0).UnpackTo(&unpacked));
+  EXPECT_EQ(unpacked.blob_id(), "replacement_blob_id");
+}
+
+TEST_F(FnTest, EmitEncryptedWithoutMetadataUsesBlobHeaderPath) {
+  Fn::FnContext fn_context(mock_context_, AssociatedMetadata());
   Session::KV emitted_kv;
   EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
       .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
 
-  Session::KV output;
-  output.data = "output_data";
-  output.associated_metadata = explicit_metadata;
-  EXPECT_TRUE(fn_context.EmitEncrypted(0, std::move(output)));
-  ASSERT_TRUE(emitted_kv.associated_metadata.has_value());
-  BlobHeader unpacked;
-  EXPECT_TRUE(emitted_kv.associated_metadata->metadata(0).UnpackTo(&unpacked));
-  EXPECT_EQ(unpacked.blob_id(), "explicit_blob_id");
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
+  EXPECT_EQ(emitted_kv.data, "output_data");
 }
 
-TEST_F(FnTest, EmitUnencryptedAttachesMetadata) {
+TEST_F(FnTest, EmitEncryptedAfterClearMetadataUsesBlobHeaderPath) {
+  Fn::FnContext fn_context(mock_context_, CreateMetadata("blob_id", "key_id"));
+  fn_context.associated_metadata().Clear();
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _)).WillOnce(Return(true));
+
+  EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
+}
+
+TEST_F(FnTest, EmitUnencryptedDoesNotIncludeMetadata) {
   AssociatedMetadata metadata = CreateMetadata("blob_id", "key_id");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
   Session::KV emitted_kv;
@@ -187,11 +215,10 @@ TEST_F(FnTest, EmitUnencryptedAttachesMetadata) {
   Session::KV output;
   output.data = "output_data";
   EXPECT_TRUE(fn_context.EmitUnencrypted(std::move(output)));
-  ASSERT_TRUE(emitted_kv.associated_metadata.has_value());
-  EXPECT_EQ(emitted_kv.associated_metadata->metadata_size(), 1);
+  EXPECT_EQ(emitted_kv.data, "output_data");
 }
 
-TEST_F(FnTest, EmitReleasableAttachesMetadata) {
+TEST_F(FnTest, EmitReleasableWithMetadata) {
   AssociatedMetadata metadata = CreateMetadata("blob_id", "key_id");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
 
@@ -204,18 +231,19 @@ TEST_F(FnTest, EmitReleasableAttachesMetadata) {
   output.data = "output_data";
   EXPECT_TRUE(
       fn_context.EmitReleasable(0, std::move(output), std::nullopt, "dst"));
-  ASSERT_TRUE(emitted_kv.associated_metadata.has_value());
-  EXPECT_EQ(emitted_kv.associated_metadata->metadata_size(), 1);
+  EXPECT_EQ(emitted_kv.data, "output_data");
 }
 
 TEST_F(FnTest, MultipleEmissionsGetSameMetadata) {
   AssociatedMetadata metadata = CreateMetadata("blob_id", "key_id");
   Fn::FnContext fn_context(mock_context_, std::move(metadata));
-  Session::KV emitted_kv1;
-  Session::KV emitted_kv2;
-  EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
-      .WillOnce(DoAll(SaveArg<1>(&emitted_kv1), Return(true)))
-      .WillOnce(DoAll(SaveArg<1>(&emitted_kv2), Return(true)));
+  AssociatedMetadata emitted_metadata1;
+  AssociatedMetadata emitted_metadata2;
+  EXPECT_CALL(mock_context_, EmitEncrypted(0, _, _))
+      .WillOnce(
+          DoAll(SaveAssociatedMetadataArg<2>(&emitted_metadata1), Return(true)))
+      .WillOnce(DoAll(SaveAssociatedMetadataArg<2>(&emitted_metadata2),
+                      Return(true)));
   Session::KV output1;
   output1.data = "data1";
   EXPECT_TRUE(fn_context.EmitEncrypted(0, std::move(output1)));
@@ -224,11 +252,11 @@ TEST_F(FnTest, MultipleEmissionsGetSameMetadata) {
   EXPECT_TRUE(fn_context.EmitEncrypted(0, std::move(output2)));
 
   // Both emissions should have the same metadata.
-  ASSERT_TRUE(emitted_kv1.associated_metadata.has_value());
-  ASSERT_TRUE(emitted_kv2.associated_metadata.has_value());
+  ASSERT_EQ(emitted_metadata1.metadata_size(), 1);
+  ASSERT_EQ(emitted_metadata2.metadata_size(), 1);
   BlobHeader h1, h2;
-  EXPECT_TRUE(emitted_kv1.associated_metadata->metadata(0).UnpackTo(&h1));
-  EXPECT_TRUE(emitted_kv2.associated_metadata->metadata(0).UnpackTo(&h2));
+  EXPECT_TRUE(emitted_metadata1.metadata(0).UnpackTo(&h1));
+  EXPECT_TRUE(emitted_metadata2.metadata(0).UnpackTo(&h2));
   EXPECT_EQ(h1.blob_id(), "blob_id");
   EXPECT_EQ(h2.blob_id(), "blob_id");
 }
@@ -318,23 +346,43 @@ TEST_F(FnTest, ProtectedMetadataAccessors) {
                            CreateProtectedMetadata("protected_blob"));
 
   BlobHeader unpacked;
-  ASSERT_TRUE(fn_context.UnpackProtectedMetadata(&unpacked));
+  ASSERT_TRUE(fn_context.protected_metadata().Unpack(&unpacked));
   EXPECT_EQ(unpacked.blob_id(), "protected_blob");
   // Protected and associated metadata are independent.
-  EXPECT_FALSE(fn_context.UnpackMetadata(&unpacked));
+  EXPECT_FALSE(fn_context.associated_metadata().Unpack(&unpacked));
 
   BlobHeader replacement;
   replacement.set_blob_id("replacement");
-  fn_context.PackProtectedMetadata(replacement);
-  ASSERT_TRUE(fn_context.UnpackProtectedMetadata(&unpacked));
+  fn_context.protected_metadata().Pack(replacement);
+  ASSERT_TRUE(fn_context.protected_metadata().Unpack(&unpacked));
   EXPECT_EQ(unpacked.blob_id(), "replacement");
 
-  fn_context.RemoveProtectedMetadata<BlobHeader>();
-  EXPECT_FALSE(fn_context.UnpackProtectedMetadata(&unpacked));
+  fn_context.protected_metadata().Remove<BlobHeader>();
+  EXPECT_FALSE(fn_context.protected_metadata().Unpack(&unpacked));
 
-  fn_context.PackProtectedMetadata(replacement);
-  fn_context.ClearProtectedMetadata();
-  EXPECT_FALSE(fn_context.UnpackProtectedMetadata(&unpacked));
+  fn_context.protected_metadata().Pack(replacement);
+  fn_context.protected_metadata().Clear();
+  EXPECT_FALSE(fn_context.protected_metadata().Unpack(&unpacked));
+}
+
+TEST_F(FnTest, SetAssociatedMetadataReplacesAllEntries) {
+  Fn::FnContext fn_context(mock_context_, CreateMetadata("old_blob", "old_key"),
+                           CreateProtectedMetadata("old_protected_blob"));
+
+  fn_context.associated_metadata().Set(CreateMetadata("new_blob", "new_key"));
+  BlobHeader unpacked;
+  ASSERT_TRUE(fn_context.associated_metadata().Unpack(&unpacked));
+  EXPECT_EQ(unpacked.blob_id(), "new_blob");
+
+  fn_context.protected_metadata().Set(
+      CreateProtectedMetadata("new_protected_blob"));
+  ASSERT_TRUE(fn_context.protected_metadata().Unpack(&unpacked));
+  EXPECT_EQ(unpacked.blob_id(), "new_protected_blob");
+
+  fn_context.associated_metadata().Set(AssociatedMetadata());
+  EXPECT_FALSE(fn_context.associated_metadata().Unpack(&unpacked));
+  fn_context.protected_metadata().Set(ProtectedMetadata());
+  EXPECT_FALSE(fn_context.protected_metadata().Unpack(&unpacked));
 }
 
 // Unbundles the protected metadata from an emitted KV's data.
@@ -370,8 +418,6 @@ TEST_F(FnTest, EmitEncryptedBundlesProtectedMetadata) {
   // The metadata is bundled into the data.
   EXPECT_EQ(BlobIdOf(UnbundleEmitted(emitted_kv)), "protected_blob");
   EXPECT_EQ(emitted_kv.data, "output_data");
-  // No associated metadata on the context, so none is attached.
-  EXPECT_FALSE(emitted_kv.associated_metadata.has_value());
 }
 
 TEST_F(FnTest, EmitEncryptedUsesCurrentContextProtectedMetadata) {
@@ -386,7 +432,7 @@ TEST_F(FnTest, EmitEncryptedUsesCurrentContextProtectedMetadata) {
   EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("first")));
   BlobHeader second_header;
   second_header.set_blob_id("second_blob");
-  fn_context.PackProtectedMetadata(second_header);
+  fn_context.protected_metadata().Pack(second_header);
   EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("second")));
 
   EXPECT_EQ(BlobIdOf(UnbundleEmitted(first_kv)), "first_blob");
@@ -402,7 +448,7 @@ TEST_F(FnTest, EmitEncryptedAfterClearProtectedMetadataIsNotBundled) {
   EXPECT_CALL(mock_context_, EmitEncrypted(0, _))
       .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
 
-  fn_context.ClearProtectedMetadata();
+  fn_context.protected_metadata().Clear();
   EXPECT_TRUE(fn_context.EmitEncrypted(0, Session::KV("output_data")));
   // Not bundled.
   EXPECT_EQ(emitted_kv.data, "output_data");

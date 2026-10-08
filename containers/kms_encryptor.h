@@ -51,17 +51,15 @@ class KmsEncryptor {
       int reencryption_key_index, absl::string_view plaintext,
       absl::string_view blob_id) const;
 
-  // Encrypts an intermediate result using AssociatedMetadata as the AEAD
-  // associated data. The AssociatedMetadata is serialized for use as AAD and
-  // packed into a google.protobuf.Any on KmsAssociatedData.associated_metadata.
+  // Encrypts an intermediate result using `associated_metadata` as the AEAD
+  // associated data.
   //
   // This overload is intended for TEE-to-TEE intermediate outputs where
   // BlobHeader is not applicable.
   absl::StatusOr<EncryptedResult> EncryptIntermediateResult(
       int reencryption_key_index, absl::string_view plaintext,
       absl::string_view blob_id,
-      const fcp::confidentialcompute::AssociatedMetadata& associated_metadata)
-      const;
+      google::protobuf::Any associated_metadata) const;
 
   absl::StatusOr<EncryptedResult> EncryptReleasableResult(
       int reencryption_key_index, absl::string_view plaintext,

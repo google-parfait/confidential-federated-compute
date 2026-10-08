@@ -38,6 +38,12 @@ using ::testing::_;
 using ::testing::NiceMock;
 using ::testing::Return;
 
+google::protobuf::Any PackAny(const AssociatedMetadata& associated_metadata) {
+  google::protobuf::Any any;
+  any.PackFrom(associated_metadata);
+  return any;
+}
+
 TEST(KmsEncryptorTest, EncryptIntermediateResult) {
   auto key_pair_1 = crypto_test_utils::GenerateKeyPair("key_1");
   auto key_pair_2 = crypto_test_utils::GenerateKeyPair("key_2");
@@ -115,7 +121,7 @@ TEST(KmsEncryptorTest, EncryptIntermediateResultWithAssociatedMetadata) {
   // Encrypt using the first key with AssociatedMetadata
   absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
       encryptor.EncryptIntermediateResult(0, "plaintext", "foo",
-                                          associated_metadata);
+                                          PackAny(associated_metadata));
   ASSERT_THAT(encrypted_result, IsOk());
 
   // Decrypt using the same key — round-trip must succeed
@@ -137,7 +143,7 @@ TEST(KmsEncryptorTest,
 
   absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
       encryptor.EncryptIntermediateResult(0, "plaintext", "foo",
-                                          associated_metadata);
+                                          PackAny(associated_metadata));
   ASSERT_THAT(encrypted_result, IsOk());
 
   const BlobMetadata& metadata = encrypted_result->metadata;
@@ -171,10 +177,10 @@ TEST(KmsEncryptorTest,
                          std::make_unique<NiceMock<MockSigningKeyHandle>>());
   AssociatedMetadata associated_metadata;
   EXPECT_THAT(encryptor.EncryptIntermediateResult(3, "plaintext", "foo",
-                                                  associated_metadata),
+                                                  PackAny(associated_metadata)),
               StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(encryptor.EncryptIntermediateResult(-1, "plaintext", "bar",
-                                                  associated_metadata),
+                                                  PackAny(associated_metadata)),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

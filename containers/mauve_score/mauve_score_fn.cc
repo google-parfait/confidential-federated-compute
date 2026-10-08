@@ -84,11 +84,8 @@ struct BudgetKey {
   std::optional<Interval<uint64_t>> agg_window;
 };
 
-bool HasTimeWindowMetadata(const Session::KV& kv) {
-  if (!kv.associated_metadata.has_value()) {
-    return false;
-  }
-  for (const auto& entry : kv.associated_metadata->metadata()) {
+bool HasTimeWindowMetadata(const BatchDoFn::Element& input) {
+  for (const auto& entry : input.associated_metadata.metadata()) {
     if (entry.Is<SessionTimeWindowMetadata>()) {
       return true;
     }
@@ -118,7 +115,7 @@ class MauveScoreFn : public BatchDoFn {
       std::optional<std::string> initial_pipeline_state,
       ComputeMauveFn compute_mauve_fn);
 
-  absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
+  absl::Status Do(Any config, std::vector<Element> accumulated_inputs,
                   DoContext& context) override;
 
   absl::Status FinalizeReplica(Any config, FnContext& context) override;
@@ -134,9 +131,9 @@ class MauveScoreFn : public BatchDoFn {
 
   absl::StatusOr<std::vector<Session::KV>>
   FilterInputsWithRemainingTimeWindowBudget(
-      std::vector<Session::KV> accumulated_inputs, DoContext& context);
+      std::vector<Element> accumulated_inputs, DoContext& context);
   absl::StatusOr<std::vector<Session::KV>> FilterInputsWithRemainingKeyIdBudget(
-      std::vector<Session::KV> accumulated_inputs, DoContext& context);
+      std::vector<Element> accumulated_inputs, DoContext& context);
 
   const std::vector<Embedding>& synthetic_data_embeddings_;
   Budget budget_;
@@ -189,19 +186,17 @@ absl::StatusOr<std::unique_ptr<MauveScoreFn>> MauveScoreFn::Create(
 
 absl::StatusOr<std::vector<Session::KV>>
 MauveScoreFn::FilterInputsWithRemainingTimeWindowBudget(
-    std::vector<Session::KV> accumulated_inputs, DoContext& context) {
+    std::vector<Element> accumulated_inputs, DoContext& context) {
   std::optional<Interval<uint64_t>> agg_window;
   std::vector<Session::KV> valid_inputs;
 
-  for (auto& kv : accumulated_inputs) {
+  for (Element& input : accumulated_inputs) {
     SessionTimeWindowMetadata time_window_metadata;
     bool found = false;
-    if (kv.associated_metadata.has_value()) {
-      for (const auto& entry : kv.associated_metadata->metadata()) {
-        if (entry.UnpackTo(&time_window_metadata)) {
-          found = true;
-          break;
-        }
+    for (const auto& entry : input.associated_metadata.metadata()) {
+      if (entry.UnpackTo(&time_window_metadata)) {
+        found = true;
+        break;
       }
     }
     if (!found) {
@@ -229,7 +224,7 @@ MauveScoreFn::FilterInputsWithRemainingTimeWindowBudget(
             ? Interval<uint64_t>(std::min(agg_window->start(), window.start()),
                                  std::max(agg_window->end(), window.end()))
             : window;
-    valid_inputs.push_back(std::move(kv));
+    valid_inputs.push_back(std::move(input.kv));
   }
 
   if (valid_inputs.empty()) {
@@ -253,19 +248,17 @@ MauveScoreFn::FilterInputsWithRemainingTimeWindowBudget(
 
 absl::StatusOr<std::vector<Session::KV>>
 MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
-    std::vector<Session::KV> accumulated_inputs, DoContext& context) {
+    std::vector<Element> accumulated_inputs, DoContext& context) {
   absl::flat_hash_set<std::string> active_keys;
   std::vector<Session::KV> valid_inputs;
 
-  for (auto& kv : accumulated_inputs) {
+  for (Element& input : accumulated_inputs) {
     std::string key_id = "";
-    if (kv.associated_metadata.has_value()) {
-      for (const auto& entry : kv.associated_metadata->metadata()) {
-        BlobHeader blob_header;
-        if (entry.UnpackTo(&blob_header)) {
-          key_id = blob_header.key_id();
-          break;
-        }
+    for (const auto& entry : input.associated_metadata.metadata()) {
+      BlobHeader blob_header;
+      if (entry.UnpackTo(&blob_header)) {
+        key_id = blob_header.key_id();
+        break;
       }
     }
 
@@ -275,7 +268,7 @@ MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
     }
 
     active_keys.insert(key_id);
-    valid_inputs.push_back(std::move(kv));
+    valid_inputs.push_back(std::move(input.kv));
   }
 
   if (valid_inputs.empty()) {
@@ -289,16 +282,17 @@ MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
 }
 
 absl::Status MauveScoreFn::Do(Any config,
-                              std::vector<Session::KV> accumulated_inputs,
+                              std::vector<Element> accumulated_inputs,
                               DoContext& context) {
   // Phase 0: Check for duplicate blob IDs.
   absl::flat_hash_set<std::string> seen_blob_ids;
-  for (const auto& kv : accumulated_inputs) {
-    if (!kv.blob_id.empty()) {
-      auto [it, inserted] = seen_blob_ids.insert(kv.blob_id);
+  for (const Element& input : accumulated_inputs) {
+    const std::string& blob_id = input.kv.blob_id;
+    if (!blob_id.empty()) {
+      auto [it, inserted] = seen_blob_ids.insert(blob_id);
       if (!inserted) {
         return absl::InvalidArgumentError(
-            absl::StrCat("Duplicate blob id detected: ", kv.blob_id));
+            absl::StrCat("Duplicate blob id detected: ", blob_id));
       }
     }
   }

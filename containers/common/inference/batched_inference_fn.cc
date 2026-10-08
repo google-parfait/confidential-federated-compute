@@ -102,9 +102,9 @@ struct BlobLevelWorkItem {
 
   google::protobuf::Any key;
   std::string blob_id;
-  // Associated metadata of the input blob, propagated to the output blob.
-  std::optional<fcp::confidentialcompute::AssociatedMetadata>
-      associated_metadata;
+  // Metadata of the input blob, propagated to the output blob.
+  fcp::confidentialcompute::AssociatedMetadata associated_metadata;
+  fcp::confidentialcompute::ProtectedMetadata protected_metadata;
   std::unique_ptr<Input> input;
   std::vector<std::unique_ptr<TaskLevelWorkItem>> task_items;
 };
@@ -416,12 +416,11 @@ class BatchedInferenceFn final
   ~BatchedInferenceFn() {}
 
   absl::Status Do(google::protobuf::Any config,
-                  std::vector<Session::KV> accumulated_inputs,
+                  std::vector<Element> accumulated_inputs,
                   DoContext& context) override;
 
  private:
-  absl::StatusOr<std::unique_ptr<BlobLevelWorkItem>> PrepareBlob(
-      Session::KV kv);
+  absl::StatusOr<std::unique_ptr<BlobLevelWorkItem>> PrepareBlob(Element input);
 
   absl::Status DoBatchedInferenceInternal(
       const std::vector<CallLevelWorkItem*>& batch, DoContext& context);
@@ -447,12 +446,11 @@ class BatchedInferenceFn final
 // blob are reported as InvalidArgument. InternalError is reserved for
 // unexpected conditions that indicate a bug.
 absl::StatusOr<std::unique_ptr<BlobLevelWorkItem>>
-BatchedInferenceFn::PrepareBlob(Session::KV kv) {
+BatchedInferenceFn::PrepareBlob(Element input) {
+  Session::KV& kv = input.kv;
   auto blob_item = std::make_unique<BlobLevelWorkItem>(kv.key, kv.blob_id);
-  if (kv.associated_metadata.has_value() &&
-      kv.associated_metadata->metadata_size() > 0) {
-    blob_item->associated_metadata = std::move(kv.associated_metadata);
-  }
+  blob_item->associated_metadata = std::move(input.associated_metadata);
+  blob_item->protected_metadata = std::move(input.protected_metadata);
   absl::Status task_unpack_status =
       UnpackTasksForBlob(inference_config_, blob_item.get());
   if (!task_unpack_status.ok()) {
@@ -543,15 +541,15 @@ BatchedInferenceFn::PrepareBlob(Session::KV kv) {
 }
 
 absl::Status BatchedInferenceFn::Do(google::protobuf::Any config,
-                                    std::vector<Session::KV> accumulated_inputs,
+                                    std::vector<Element> accumulated_inputs,
                                     DoContext& context) {
   const int batch_size =
       std::max(1, inference_config_.runtime_config().max_batch_size());
   std::queue<std::unique_ptr<BlobLevelWorkItem>> pending_blob_items;
   std::vector<CallLevelWorkItem*> batched_call_items;
-  for (Session::KV& kv : accumulated_inputs) {
+  for (Element& input : accumulated_inputs) {
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<BlobLevelWorkItem> blob_item,
-                          PrepareBlob(std::move(kv)));
+                          PrepareBlob(std::move(input)));
     for (auto& task_item : blob_item->task_items) {
       for (auto& call_item : task_item->call_items) {
         batched_call_items.push_back(call_item.get());
@@ -694,7 +692,8 @@ absl::Status BatchedInferenceFn::FinalizeBlob(BlobLevelWorkItem* blob_item,
   std::string flattened_output(checkpoint_or->Flatten());
   Session::KV output{blob_item->key, std::move(flattened_output),
                      blob_item->blob_id};
-  output.associated_metadata = std::move(blob_item->associated_metadata);
+  context.associated_metadata().Set(std::move(blob_item->associated_metadata));
+  context.protected_metadata().Set(std::move(blob_item->protected_metadata));
   if (!context.EmitEncrypted(0, std::move(output))) {
     return absl::InternalError("EmitEncrypted failed");
   }

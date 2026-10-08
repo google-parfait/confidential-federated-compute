@@ -434,7 +434,7 @@ class KmsFedSqlSessionWriteTest : public Test {
 
  protected:
   void ExpectEmitEncrypted(int& index, std::string& data) {
-    EXPECT_CALL(context_, EmitEncrypted)
+    EXPECT_CALL(context_, EmitEncrypted(_, _))
         .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
           index = reencryption_key_index;
           data = std::move(kv.data);
@@ -444,7 +444,7 @@ class KmsFedSqlSessionWriteTest : public Test {
 
   void ExpectEmitEncrypted(int& index, std::vector<std::string>& data,
                            std::vector<google::protobuf::Any>& configs) {
-    EXPECT_CALL(context_, EmitEncrypted)
+    EXPECT_CALL(context_, EmitEncrypted(_, _))
         .WillRepeatedly(
             [&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
               index = reencryption_key_index;
@@ -2532,7 +2532,7 @@ class KmsFedSqlSessionWritePartialRangeTest : public Test {
   }
 
   void ExpectEmitEncrypted(int& index, std::string& data) {
-    EXPECT_CALL(context_, EmitEncrypted)
+    EXPECT_CALL(context_, EmitEncrypted(_, _))
         .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
           index = reencryption_key_index;
           data = std::move(kv.data);
@@ -2710,7 +2710,7 @@ class KmsFedSqlSessionWriteWithMessageTest : public Test {
 
  protected:
   void ExpectEmitEncrypted(int& index, std::string& data) {
-    EXPECT_CALL(context_, EmitEncrypted)
+    EXPECT_CALL(context_, EmitEncrypted(_, _))
         .WillOnce([&](int reencryption_key_index, KmsFedSqlSession::KV kv) {
           index = reencryption_key_index;
           data = std::move(kv.data);

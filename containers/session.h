@@ -28,6 +28,7 @@
 #include "absl/status/statusor.h"
 #include "containers/crypto.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
+#include "google/protobuf/any.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -76,8 +77,7 @@ class Session {
  public:
   virtual ~Session() = default;
 
-  // A struct that describes an input or output key/value pair with an
-  // optional metadata
+  // A struct that describes an input or output key/value pair.
   struct KV {
     // Optional key associated with the data.
     // If not specified the key has the default value.
@@ -86,14 +86,6 @@ class Session {
     std::string data;
     // Blob ID associated with the data, if available; otherwise empty.
     std::string blob_id;
-    // Optional metadata to cryptographically bind as AEAD associated data
-    // when encrypting. When set, the AssociatedMetadata is serialized for
-    // use as AAD and packed into a google.protobuf.Any on
-    // KmsAssociatedData.associated_metadata.
-    //
-    // When not set, encryption falls back to the BlobHeader-based AAD path.
-    std::optional<fcp::confidentialcompute::AssociatedMetadata>
-        associated_metadata;
 
     // Implicit constructor that constructs KV from data.
     // This allows passing a string or literal in place of KV, for example
@@ -135,12 +127,12 @@ class Session {
     // reencryption key. This methods is appropriate only for temporary
     // encryption, for blobs that will be consumed by other parts of the
     // pipeline. Use `EmitReleasable` for emitting the final releasable result.
-    //
-    // If kv.associated_metadata is set, the AssociatedMetadata is serialized
-    // for use as AEAD associated data and packed into a google.protobuf.Any
-    // on KmsAssociatedData.associated_metadata. Otherwise, falls back to the
-    // BlobHeader-based AAD path.
     virtual bool EmitEncrypted(int reencryption_key_index, KV kv) = 0;
+
+    // Same as above, but binds `associated_metadata` as the AEAD associated
+    // data instead of a BlobHeader.
+    virtual bool EmitEncrypted(int reencryption_key_index, KV kv,
+                               google::protobuf::Any associated_metadata) = 0;
 
     // Encrypts and emits the releasable result using the provided key/value and
     // the specified reencryption key. Also, saves the `release_token` in the

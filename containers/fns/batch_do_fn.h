@@ -69,25 +69,29 @@ class BatchDoFn : public Fn {
     using FnContext::EmitReleasable;
   };
 
+  // A single element accumulated from a Write() call.
+  struct Element {
+    Session::KV kv;
+    fcp::confidentialcompute::AssociatedMetadata associated_metadata;
+    fcp::confidentialcompute::ProtectedMetadata protected_metadata;
+  };
+
   // Called once with ALL accumulated inputs from Write() calls and the
   // commit configuration. Implementations should process the inputs
   // and emit output(s) via context.Emit*().
   //
-  // Each input KV carries its associated_metadata. The DoContext starts with
-  // empty metadata; use PackMetadata() or set associated_metadata on output KVs
-  // directly.
+  // The DoContext starts with empty metadata. To propagate an input's metadata
+  // to an output, set it on the context before emitting.
   //
   // Returns an error status if an error occurred and the Fn should be
   // aborted. Metrics about ignorable errors can be recorded using the
   // Counters via DoContext::IncrementCounter or DoContext::IncrementCounterBy.
   virtual absl::Status Do(google::protobuf::Any config,
-                          std::vector<Session::KV> accumulated_inputs,
+                          std::vector<Element> accumulated_inputs,
                           DoContext& context) = 0;
 
   // final: accumulates unencrypted_data into internal buffer, preserving
-  // key and blob_id from the WriteRequest.
-  //
-  // TODO: Propagate protected metadata to Do(). It is currently dropped.
+  // key, blob_id and metadata from the WriteRequest.
   using Fn::Write;
   absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> Write(
       fcp::confidentialcompute::WriteRequest write_request,
@@ -102,7 +106,7 @@ class BatchDoFn : public Fn {
       Context& context) override final;
 
  private:
-  std::vector<Session::KV> accumulated_inputs_;
+  std::vector<Element> accumulated_inputs_;
 };
 
 }  // namespace confidential_federated_compute::fns

@@ -185,6 +185,10 @@ class ContextImpl : public Session::Context {
   bool EmitEncrypted(int reencryption_key_index, Session::KV kv) override {
     return false;
   }
+  bool EmitEncrypted(int reencryption_key_index, Session::KV kv,
+                     google::protobuf::Any associated_metadata) override {
+    return false;
+  }
   bool EmitReleasable(int reencryption_key_index, Session::KV kv,
                       std::optional<absl::string_view> src_state,
                       absl::string_view dst_state,

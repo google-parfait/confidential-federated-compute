@@ -86,6 +86,8 @@ class SessionContextImpl : public Session::Context {
   bool Emit(ReadResponse read_response) override;
   bool EmitUnencrypted(Session::KV kv) override;
   bool EmitEncrypted(int reencryption_key_index, Session::KV kv) override;
+  bool EmitEncrypted(int reencryption_key_index, Session::KV kv,
+                     google::protobuf::Any associated_metadata) override;
   bool EmitReleasable(int reencryption_key_index, Session::KV kv,
                       std::optional<absl::string_view> src_state,
                       absl::string_view dst_state,
@@ -137,12 +139,32 @@ bool SessionContextImpl::EmitEncrypted(int reencryption_key_index,
   }
 
   absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
-      kv.associated_metadata.has_value()
-          ? encryptor_->EncryptIntermediateResult(reencryption_key_index,
-                                                  kv.data, kv.blob_id,
-                                                  *kv.associated_metadata)
-          : encryptor_->EncryptIntermediateResult(reencryption_key_index,
-                                                  kv.data, kv.blob_id);
+      encryptor_->EncryptIntermediateResult(reencryption_key_index, kv.data,
+                                            kv.blob_id);
+  if (!encrypted_result.ok()) {
+    LOG(ERROR) << "Failed to encrypt intermediate result: "
+               << encrypted_result.status();
+    return false;
+  }
+
+  BlobMetadata metadata = std::move(encrypted_result->metadata);
+
+  return Emit(std::move(encrypted_result->ciphertext), std::move(kv.key),
+              std::move(metadata));
+}
+
+bool SessionContextImpl::EmitEncrypted(
+    int reencryption_key_index, Session::KV kv,
+    google::protobuf::Any associated_metadata) {
+  if (!encryptor_.has_value()) {
+    LOG(ERROR) << "KMS reencryption context isn't initialized";
+    return false;
+  }
+
+  absl::StatusOr<KmsEncryptor::EncryptedResult> encrypted_result =
+      encryptor_->EncryptIntermediateResult(reencryption_key_index, kv.data,
+                                            kv.blob_id,
+                                            std::move(associated_metadata));
   if (!encrypted_result.ok()) {
     LOG(ERROR) << "Failed to encrypt intermediate result: "
                << encrypted_result.status();

@@ -42,58 +42,89 @@ class Fn : public confidential_federated_compute::Session {
   //
   // FnContext captures the input's associated metadata and protected metadata
   // and automatically propagates them to emitted outputs (see Emit methods).
+  //
+  // Both associated metadata and protected metadata are collections of
+  // arbitrary messages, each identified by a unique `type_url`.
+  //
+  // Associated metadata is not encrypted and is visible outside of the TEE,
+  // but it is cryptographically bound to the encrypted payload as AEAD
+  // associated data. Protected metadata is encrypted together with the payload
+  // and is only visible inside the TEE.
   class FnContext {
    public:
+    // A lightweight view over one of the context's metadata collections that
+    // allows unpacking, packing and removing entries. Obtained via
+    // associated_metadata() or protected_metadata(); must not outlive the
+    // FnContext.
+    template <typename MetadataProto>
+    class MetadataView {
+     public:
+      // Unpacks the entry matching T's type_url into `message`. Returns true if
+      // a matching entry was found and successfully unpacked. Modeled after
+      // google::protobuf::Any::UnpackTo.
+      template <typename T>
+      bool Unpack(T* message) const {
+        for (const auto& entry : metadata_.metadata()) {
+          if (entry.template Is<T>()) {
+            return entry.UnpackTo(message);
+          }
+        }
+        return false;
+      }
+
+      // Packs the given message, replacing any existing entry with the same
+      // type_url. Modeled after google::protobuf::Any::PackFrom.
+      template <typename T>
+      void Pack(const T& message) {
+        for (auto& entry : *metadata_.mutable_metadata()) {
+          if (entry.template Is<T>()) {
+            entry.PackFrom(message);
+            return;
+          }
+        }
+        metadata_.add_metadata()->PackFrom(message);
+      }
+
+      // Removes the entry matching T's type_url, if present.
+      template <typename T>
+      void Remove(const T& = T{}) {
+        auto& entries = *metadata_.mutable_metadata();
+        entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                     [](const google::protobuf::Any& e) {
+                                       return e.template Is<T>();
+                                     }),
+                      entries.end());
+      }
+
+      // Removes all entries.
+      void Clear() { metadata_.clear_metadata(); }
+
+      // Replaces all entries.
+      void Set(MetadataProto metadata) { metadata_ = std::move(metadata); }
+
+     private:
+      friend class FnContext;
+      explicit MetadataView(MetadataProto& metadata) : metadata_(metadata) {}
+
+      MetadataProto& metadata_;
+    };
+
     explicit FnContext(
         Context& session_context,
-        fcp::confidentialcompute::AssociatedMetadata metadata,
+        fcp::confidentialcompute::AssociatedMetadata associated_metadata,
         fcp::confidentialcompute::ProtectedMetadata protected_metadata = {});
 
-    // Unpacks the associated metadata entry matching T's type_url into
-    // `message`. Returns true if a matching entry was found and successfully
-    // unpacked. Modeled after google::protobuf::Any::UnpackTo.
-    template <typename T>
-    bool UnpackMetadata(T* message) const {
-      return UnpackEntry(metadata_.metadata(), message);
+    MetadataView<fcp::confidentialcompute::AssociatedMetadata>
+    associated_metadata() {
+      return MetadataView<fcp::confidentialcompute::AssociatedMetadata>(
+          associated_metadata_);
     }
 
-    // Packs the given message into the associated metadata, replacing any
-    // existing entry with the same type_url. Modeled after
-    // google::protobuf::Any::PackFrom.
-    template <typename T>
-    void PackMetadata(const T& message) {
-      PackEntry(*metadata_.mutable_metadata(), message);
+    MetadataView<fcp::confidentialcompute::ProtectedMetadata>
+    protected_metadata() {
+      return MetadataView<fcp::confidentialcompute::ProtectedMetadata>(
+          protected_metadata_);
     }
-
-    // Removes the associated metadata entry matching T's type_url, if present.
-    template <typename T>
-    void RemoveMetadata(const T& = T{}) {
-      RemoveEntry<T>(*metadata_.mutable_metadata());
-    }
-
-    // Removes all associated metadata entries.
-    void ClearMetadata() { metadata_.clear_metadata(); }
-
-    // Same as UnpackMetadata, but for protected metadata.
-    template <typename T>
-    bool UnpackProtectedMetadata(T* message) const {
-      return UnpackEntry(protected_metadata_.metadata(), message);
-    }
-
-    // Same as PackMetadata, but for protected metadata.
-    template <typename T>
-    void PackProtectedMetadata(const T& message) {
-      PackEntry(*protected_metadata_.mutable_metadata(), message);
-    }
-
-    // Same as RemoveMetadata, but for protected metadata.
-    template <typename T>
-    void RemoveProtectedMetadata(const T& = T{}) {
-      RemoveEntry<T>(*protected_metadata_.mutable_metadata());
-    }
-
-    // Removes all protected metadata entries.
-    void ClearProtectedMetadata() { protected_metadata_.clear_metadata(); }
 
     // Emit methods (delegates to session_context, auto-attaches metadata).
     bool Emit(fcp::confidentialcompute::ReadResponse read_response);
@@ -111,46 +142,12 @@ class Fn : public confidential_federated_compute::Session {
    private:
     friend class Fn;
 
-    using AnyEntries =
-        google::protobuf::RepeatedPtrField<google::protobuf::Any>;
-
-    template <typename T>
-    static bool UnpackEntry(const AnyEntries& entries, T* message) {
-      for (const auto& entry : entries) {
-        if (entry.Is<T>()) {
-          return entry.UnpackTo(message);
-        }
-      }
-      return false;
-    }
-
-    template <typename T>
-    static void PackEntry(AnyEntries& entries, const T& message) {
-      for (auto& entry : entries) {
-        if (entry.Is<T>()) {
-          entry.PackFrom(message);
-          return;
-        }
-      }
-      // Not found — add new entry.
-      entries.Add()->PackFrom(message);
-    }
-
-    template <typename T>
-    static void RemoveEntry(AnyEntries& entries) {
-      entries.erase(std::remove_if(entries.begin(), entries.end(),
-                                   [](const google::protobuf::Any& e) {
-                                     return e.Is<T>();
-                                   }),
-                    entries.end());
-    }
-
     // Returns the release token saved by EmitReleasable, or empty if
     // EmitReleasable was not called.
     const std::string& GetReleaseToken() const { return release_token_; }
 
     Context& session_context_;
-    fcp::confidentialcompute::AssociatedMetadata metadata_;
+    fcp::confidentialcompute::AssociatedMetadata associated_metadata_;
     fcp::confidentialcompute::ProtectedMetadata protected_metadata_;
     std::string release_token_;
   };

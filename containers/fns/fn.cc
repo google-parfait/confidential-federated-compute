@@ -31,24 +31,12 @@ using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 
-namespace {
-
-void MaybeAttachMetadata(
-    Session::KV& kv,
-    const fcp::confidentialcompute::AssociatedMetadata& metadata) {
-  if (!kv.associated_metadata.has_value() && metadata.metadata_size() > 0) {
-    kv.associated_metadata = metadata;
-  }
-}
-
-}  // namespace
-
 Fn::FnContext::FnContext(
     Context& session_context,
-    fcp::confidentialcompute::AssociatedMetadata metadata,
+    fcp::confidentialcompute::AssociatedMetadata associated_metadata,
     fcp::confidentialcompute::ProtectedMetadata protected_metadata)
     : session_context_(session_context),
-      metadata_(std::move(metadata)),
+      associated_metadata_(std::move(associated_metadata)),
       protected_metadata_(std::move(protected_metadata)) {}
 
 bool Fn::FnContext::Emit(fcp::confidentialcompute::ReadResponse read_response) {
@@ -56,18 +44,22 @@ bool Fn::FnContext::Emit(fcp::confidentialcompute::ReadResponse read_response) {
 }
 
 bool Fn::FnContext::EmitUnencrypted(Session::KV kv) {
-  MaybeAttachMetadata(kv, metadata_);
   return session_context_.EmitUnencrypted(std::move(kv));
 }
 
 bool Fn::FnContext::EmitEncrypted(int reencryption_key_index, Session::KV kv) {
-  MaybeAttachMetadata(kv, metadata_);
   // Bundle the context's protected metadata together with the data so that
   // it is encrypted along with it. Outputs without protected metadata keep
   // the legacy (unbundled) format.
   if (protected_metadata_.metadata_size() > 0) {
     kv.data = std::string(
         BundleAny(protected_metadata_, absl::Cord(std::move(kv.data))));
+  }
+  if (associated_metadata_.metadata_size() > 0) {
+    google::protobuf::Any associated_metadata;
+    associated_metadata.PackFrom(associated_metadata_);
+    return session_context_.EmitEncrypted(reencryption_key_index, std::move(kv),
+                                          std::move(associated_metadata));
   }
   return session_context_.EmitEncrypted(reencryption_key_index, std::move(kv));
 }
@@ -79,7 +71,6 @@ bool Fn::FnContext::EmitReleasable(int reencryption_key_index, Session::KV kv,
     LOG(WARNING) << "Release token can be set only once per Fn.";
     return false;
   }
-  MaybeAttachMetadata(kv, metadata_);
   return session_context_.EmitReleasable(reencryption_key_index, std::move(kv),
                                          src_state, dst_state, release_token_);
 }

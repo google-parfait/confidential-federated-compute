@@ -75,6 +75,14 @@ using ::testing::StrictMock;
 using ::testing::Test;
 using ::testing::UnorderedElementsAre;
 
+// Unpacks the AssociatedMetadata packed into the Any passed to
+// Session::Context::EmitEncrypted.
+AssociatedMetadata ToAssociatedMetadata(const google::protobuf::Any& any) {
+  AssociatedMetadata metadata;
+  EXPECT_TRUE(any.UnpackTo(&metadata));
+  return metadata;
+}
+
 constexpr absl::string_view kQueryName = "test_query";
 
 // Returns an absl::Time that is n hours after the Unix epoch.
@@ -280,9 +288,11 @@ TEST_F(ConstructUserSessionFnTest, SingleBlobWithInWindowRowsPassesThrough) {
   // Commit should emit exactly one checkpoint that is a pass-through of the
   // input (column order in the serialized bytes may differ).
   Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_kv](int, Session::KV kv) {
+  AssociatedMetadata emitted_metadata;
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&](int, Session::KV kv, google::protobuf::Any metadata) {
         emitted_kv = std::move(kv);
+        emitted_metadata = ToAssociatedMetadata(metadata);
         return true;
       });
 
@@ -296,8 +306,7 @@ TEST_F(ConstructUserSessionFnTest, SingleBlobWithInWindowRowsPassesThrough) {
               ElementsAre(42));
 
   SessionTimeWindowMetadata time_window;
-  ASSERT_TRUE(
-      emitted_kv.associated_metadata->metadata(0).UnpackTo(&time_window));
+  ASSERT_TRUE(emitted_metadata.metadata(0).UnpackTo(&time_window));
 
   // Default config uses Hours(0) to Hours(24) (see MakeValidConfig).
   EXPECT_EQ(time_window.session_window_start(),
@@ -321,8 +330,8 @@ TEST_F(ConstructUserSessionFnTest, DuplicateBlobIdIsSkipped) {
   EXPECT_CALL(context_, GetCounters())
       .WillRepeatedly(testing::ReturnRef(context_.counters_));
   Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_kv](int, Session::KV kv) {
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_kv](int, Session::KV kv, google::protobuf::Any) {
         emitted_kv = std::move(kv);
         return true;
       });
@@ -370,8 +379,8 @@ TEST_F(ConstructUserSessionFnTest, DtypeMismatchSkipsCheckpoint) {
   EXPECT_CALL(context_, GetCounters())
       .WillOnce(testing::ReturnRef(context_.counters_));
   Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_kv](int, Session::KV kv) {
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_kv](int, Session::KV kv, google::protobuf::Any) {
         emitted_kv = std::move(kv);
         return true;
       });
@@ -399,7 +408,13 @@ TEST_F(ConstructUserSessionFnTest, AllRowsFilteredByTimeWindowDiscardsBlob) {
   ASSERT_THAT(commit_result, IsOk());
 }
 
-// Matches a Session::KV whose checkpoint has the given privacy ID, whose
+// An emitted output along with the associated metadata it was emitted with.
+struct EmittedOutput {
+  Session::KV kv;
+  AssociatedMetadata metadata;
+};
+
+// Matches an EmittedOutput whose checkpoint has the given privacy ID, whose
 // score column (kQueryName/score) satisfies the given int32 matcher, and whose
 // associated SessionTimeWindowMetadata contains key IDs matching
 // key_ids_matcher.
@@ -407,7 +422,7 @@ MATCHER_P3(HasCheckpointFor, privacy_id, score_matcher, key_ids_matcher,
            absl::StrCat("checkpoint for '", privacy_id, "' with scores ",
                         testing::PrintToString(score_matcher), " and key IDs ",
                         testing::PrintToString(key_ids_matcher))) {
-  auto tensors = ParseCheckpoint(arg.data);
+  auto tensors = ParseCheckpoint(arg.kv.data);
   if (tensors.at(std::string(kPrivacyIdColumnName))
           .template AsScalar<absl::string_view>() != privacy_id) {
     return false;
@@ -419,12 +434,11 @@ MATCHER_P3(HasCheckpointFor, privacy_id, score_matcher, key_ids_matcher,
           result_listener)) {
     return false;
   }
-  if (!arg.associated_metadata.has_value() ||
-      arg.associated_metadata->metadata_size() != 1) {
+  if (arg.metadata.metadata_size() != 1) {
     return false;
   }
   SessionTimeWindowMetadata time_window;
-  if (!arg.associated_metadata->metadata(0).UnpackTo(&time_window)) {
+  if (!arg.metadata.metadata(0).UnpackTo(&time_window)) {
     return false;
   }
   return testing::ExplainMatchResult(key_ids_matcher, time_window.key_ids(),
@@ -450,11 +464,12 @@ TEST_F(ConstructUserSessionFnTest, MultipleBlobsSamePrivacyIdMerged) {
 
   // Should emit two checkpoints total: one merged checkpoint for user_A and
   // one for user_B.
-  std::vector<Session::KV> emitted_kvs;
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
+  std::vector<EmittedOutput> emitted_kvs;
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _))
       .Times(2)
-      .WillRepeatedly([&emitted_kvs](int, Session::KV kv) {
-        emitted_kvs.push_back(std::move(kv));
+      .WillRepeatedly([&emitted_kvs](int, Session::KV kv,
+                                     google::protobuf::Any metadata) {
+        emitted_kvs.push_back({std::move(kv), ToAssociatedMetadata(metadata)});
         return true;
       });
 
@@ -480,12 +495,12 @@ TEST_F(ConstructUserSessionFnTest, StateIsClearedAfterCommit) {
 
   // First round.
   ASSERT_THAT(DoWrite(*fn_, context_, checkpoint, "blob_1"), IsOk());
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _)).WillOnce(Return(true));
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _)).WillOnce(Return(true));
   ASSERT_THAT(fn_->Commit(CommitRequest(), context_), IsOk());
 
   // Second round — same blob_id should be accepted (not treated as duplicate).
   ASSERT_THAT(DoWrite(*fn_, context_, checkpoint, "blob_1"), IsOk());
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _)).WillOnce(Return(true));
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _)).WillOnce(Return(true));
   ASSERT_THAT(fn_->Commit(CommitRequest(), context_), IsOk());
 }
 
@@ -498,8 +513,8 @@ TEST_F(ConstructUserSessionFnTest, RowsOutsideTimeWindowAreFilteredOut) {
   ASSERT_THAT(DoWrite(*fn_, context_, checkpoint), IsOk());
 
   Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_kv](int, Session::KV kv) {
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_kv](int, Session::KV kv, google::protobuf::Any) {
         emitted_kv = std::move(kv);
         return true;
       });
@@ -526,25 +541,22 @@ TEST_F(ConstructUserSessionFnTest, EmittedKvHasTimeWindowMetadata) {
 
   ASSERT_THAT(DoWrite(*fn_, context_, checkpoint, "blob_1", "key_1"), IsOk());
 
-  Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_kv](int, Session::KV kv) {
-        emitted_kv = std::move(kv);
+  AssociatedMetadata emitted_metadata;
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_metadata](int, Session::KV,
+                                    google::protobuf::Any metadata) {
+        emitted_metadata = ToAssociatedMetadata(metadata);
         return true;
       });
 
   ASSERT_THAT(fn_->Commit(CommitRequest(), context_), IsOk());
 
-  // The emitted KV should have associated_metadata set.
-  ASSERT_TRUE(emitted_kv.associated_metadata.has_value());
-
-  // The associated_metadata should contain exactly one entry.
-  ASSERT_EQ(emitted_kv.associated_metadata->metadata_size(), 1);
+  // The emitted associated metadata should contain exactly one entry.
+  ASSERT_EQ(emitted_metadata.metadata_size(), 1);
 
   // Unpack the SessionTimeWindowMetadata and verify the window times.
   SessionTimeWindowMetadata time_window;
-  ASSERT_TRUE(
-      emitted_kv.associated_metadata->metadata(0).UnpackTo(&time_window));
+  ASSERT_TRUE(emitted_metadata.metadata(0).UnpackTo(&time_window));
 
   // Default config uses Hours(0) to Hours(24) (see MakeValidConfig).
   EXPECT_EQ(time_window.session_window_start(),

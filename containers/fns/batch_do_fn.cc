@@ -29,18 +29,18 @@
 namespace confidential_federated_compute::fns {
 
 absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse>
-BatchDoFn::Write(
-    fcp::confidentialcompute::WriteRequest write_request,
-    std::string unencrypted_data,
-    fcp::confidentialcompute::ProtectedMetadata /*protected_metadata*/,
-    Context& context) {
+BatchDoFn::Write(fcp::confidentialcompute::WriteRequest write_request,
+                 std::string unencrypted_data,
+                 fcp::confidentialcompute::ProtectedMetadata protected_metadata,
+                 Context& context) {
   size_t data_size = unencrypted_data.size();
-  Session::KV input;
-  input.data = std::move(unencrypted_data);
-  input.blob_id = GetBlobId(write_request.first_request_metadata());
-  input.key = std::move(write_request.first_request_configuration());
+  Element input;
+  input.kv.data = std::move(unencrypted_data);
+  input.kv.blob_id = GetBlobId(write_request.first_request_metadata());
+  input.kv.key = std::move(write_request.first_request_configuration());
   input.associated_metadata =
       ExtractAssociatedMetadata(write_request.first_request_metadata());
+  input.protected_metadata = std::move(protected_metadata);
   accumulated_inputs_.push_back(std::move(input));
 
   fcp::confidentialcompute::WriteFinishedResponse response;

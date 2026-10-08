@@ -88,6 +88,8 @@ class MockContext : public confidential_federated_compute::Session::Context {
   MOCK_METHOD(bool, Emit, (ReadResponse), (override));
   MOCK_METHOD(bool, EmitUnencrypted, (Session::KV), (override));
   MOCK_METHOD(bool, EmitEncrypted, (int, Session::KV), (override));
+  MOCK_METHOD(bool, EmitEncrypted, (int, Session::KV, google::protobuf::Any),
+              (override));
   MOCK_METHOD(bool, EmitReleasable,
               (int, Session::KV, std::optional<absl::string_view>,
                absl::string_view, std::string&),
@@ -252,7 +254,7 @@ TEST_F(EmbeddingMapFnTest, WriteSuccess) {
               GenerateEmbeddings(ElementsAre(input), Eq(std::nullopt)))
       .WillOnce(Return(output));
   Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(0, _))
+  EXPECT_CALL(context_, EmitEncrypted(0, _, _))
       .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
 
   WriteRequest request;
@@ -280,7 +282,7 @@ TEST_F(EmbeddingMapFnTest, MapSuccessWithPrompt) {
               GenerateEmbeddings(ElementsAre(input), Eq(prompt)))
       .WillOnce(Return(output));
   Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(0, _))
+  EXPECT_CALL(context_, EmitEncrypted(0, _, _))
       .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
 
   WriteRequest request;
@@ -328,7 +330,7 @@ TEST_F(EmbeddingMapFnTest, EmitFailed) {
               GenerateEmbeddings(ElementsAre(input), Eq(std::nullopt)))
       .WillOnce(Return(output));
   Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(0, _))
+  EXPECT_CALL(context_, EmitEncrypted(0, _, _))
       .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(false)));
 
   WriteRequest request;

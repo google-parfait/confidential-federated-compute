@@ -66,12 +66,8 @@ using ::tensorflow_federated::aggregation::Tensor;
 // Extracts the key ID from the BlobHeader contained within AssociatedMetadata,
 // if present.
 absl::StatusOr<std::string> ExtractKeyId(
-    const std::optional<fcp::confidentialcompute::AssociatedMetadata>&
-        associated_metadata) {
-  if (!associated_metadata.has_value()) {
-    return absl::InvalidArgumentError("associated_metadata is not present.");
-  }
-  for (const auto& entry : associated_metadata->metadata()) {
+    const fcp::confidentialcompute::AssociatedMetadata& associated_metadata) {
+  for (const auto& entry : associated_metadata.metadata()) {
     fcp::confidentialcompute::BlobHeader header;
     if (entry.UnpackTo(&header) && !header.key_id().empty()) {
       return header.key_id();
@@ -124,14 +120,14 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
             absl::StrCat(on_device_query_name_, "/", kEventTimeColumnName)) {}
 
   absl::Status Do(google::protobuf::Any config,
-                  std::vector<Session::KV> accumulated_inputs,
+                  std::vector<Element> accumulated_inputs,
                   DoContext& context) override;
 
  private:
   // Parses, deduplicates, validates dtypes, and groups checkpoints by
   // privacy ID.
   IngestionResult IngestAndGroupCheckpoints(
-      std::vector<Session::KV> accumulated_inputs, DoContext& context);
+      std::vector<Element> accumulated_inputs, DoContext& context);
 
   // Builds serialized session output from `privacy_id_tensor` and
   // `output_tensors`.
@@ -151,9 +147,9 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
   const std::string event_time_tensor_name_;
 };
 
-absl::Status ConstructUserSessionFn::Do(
-    google::protobuf::Any config, std::vector<Session::KV> accumulated_inputs,
-    DoContext& context) {
+absl::Status ConstructUserSessionFn::Do(google::protobuf::Any config,
+                                        std::vector<Element> accumulated_inputs,
+                                        DoContext& context) {
   IngestionResult ingestion_result =
       IngestAndGroupCheckpoints(std::move(accumulated_inputs), context);
 
@@ -182,11 +178,12 @@ absl::Status ConstructUserSessionFn::Do(
 }
 
 IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
-    std::vector<Session::KV> accumulated_inputs, DoContext& context) {
+    std::vector<Element> accumulated_inputs, DoContext& context) {
   IngestionResult result;
   absl::flat_hash_set<std::string> seen_blob_ids;
 
-  for (auto& kv : accumulated_inputs) {
+  for (Element& input : accumulated_inputs) {
+    Session::KV& kv = input.kv;
     auto [it, inserted] = seen_blob_ids.insert(kv.blob_id);
     if (!inserted) {
       LOG(ERROR) << "Duplicate blob ID encountered: " << kv.blob_id
@@ -223,7 +220,8 @@ IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
       result.column_dtypes.try_emplace(name, tensor.dtype());
     }
 
-    absl::StatusOr<std::string> key_id = ExtractKeyId(kv.associated_metadata);
+    absl::StatusOr<std::string> key_id =
+        ExtractKeyId(input.associated_metadata);
     if (!key_id.ok()) {
       LOG(WARNING) << "Skipping checkpoint: failed to extract key ID: "
                    << key_id.status();
@@ -272,7 +270,7 @@ absl::Status ConstructUserSessionFn::EmitSessionOutput(
       TimeUtil::NanosecondsToTimestamp(absl::ToUnixNanos(window_end_));
   time_window_metadata.mutable_key_ids()->Add(key_ids.begin(), key_ids.end());
 
-  context.PackMetadata(time_window_metadata);
+  context.associated_metadata().Pack(time_window_metadata);
   // Emit the session output encrypted.
   if (!context.EmitEncrypted(/*reencryption_key_index=*/0,
                              Session::KV(std::move(output_data)))) {

@@ -118,24 +118,21 @@ KmsEncryptor::EncryptIntermediateResult(int reencryption_key_index,
 }
 
 absl::StatusOr<KmsEncryptor::EncryptedResult>
-KmsEncryptor::EncryptIntermediateResult(
-    int reencryption_key_index, absl::string_view plaintext,
-    absl::string_view blob_id,
-    const fcp::confidentialcompute::AssociatedMetadata& associated_metadata)
-    const {
+KmsEncryptor::EncryptIntermediateResult(int reencryption_key_index,
+                                        absl::string_view plaintext,
+                                        absl::string_view blob_id,
+                                        Any associated_metadata) const {
   ABSL_ASSIGN_OR_RETURN(absl::string_view reencryption_key,
                         GetReencryptionKey(reencryption_key_index));
   ABSL_ASSIGN_OR_RETURN(OkpKey okp_key, OkpKey::Decode(reencryption_key));
-  Any associated_metadata_any;
-  associated_metadata_any.PackFrom(associated_metadata);
   ABSL_ASSIGN_OR_RETURN(
       EncryptMessageResult encrypted_message,
       message_encryptor_.Encrypt(plaintext, reencryption_key,
-                                 associated_metadata_any.value()));
+                                 associated_metadata.value()));
 
   BlobMetadata metadata =
       CreateMetadata(encrypted_message, blob_id, okp_key.key_id,
-                     std::move(associated_metadata_any));
+                     std::move(associated_metadata));
   return EncryptedResult{.ciphertext = std::move(encrypted_message.ciphertext),
                          .metadata = std::move(metadata)};
 }

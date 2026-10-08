@@ -42,6 +42,7 @@ using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalizeResponse;
+using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
@@ -52,7 +53,16 @@ using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::SizeIs;
 using ::testing::StrictMock;
+using Element = BatchDoFn::Element;
 using DoContext = BatchDoFn::DoContext;
+
+// Like SaveArg<k>, but unpacks the AssociatedMetadata packed into the Any
+// argument passed to Session::Context::EmitEncrypted.
+template <size_t k>
+auto SaveAssociatedMetadataArg(AssociatedMetadata* metadata) {
+  return testing::WithArg<k>(
+      [metadata](const Any& any) { EXPECT_TRUE(any.UnpackTo(metadata)); });
+}
 
 // Mock Context for verifying emissions.
 class MockContext : public Session::Context {
@@ -60,6 +70,8 @@ class MockContext : public Session::Context {
   MOCK_METHOD(bool, Emit, (ReadResponse), (override));
   MOCK_METHOD(bool, EmitUnencrypted, (Session::KV), (override));
   MOCK_METHOD(bool, EmitEncrypted, (int, Session::KV), (override));
+  MOCK_METHOD(bool, EmitEncrypted, (int, Session::KV, google::protobuf::Any),
+              (override));
   MOCK_METHOD(bool, EmitReleasable,
               (int, Session::KV, std::optional<absl::string_view>,
                absl::string_view, std::string&),
@@ -71,11 +83,10 @@ class MockContext : public Session::Context {
 // and can be configured to emit specific outputs or return errors.
 class TestBatchDoFn : public BatchDoFn {
  public:
-  absl::Status Do(Any config, std::vector<Session::KV> accumulated_inputs,
+  absl::Status Do(Any config, std::vector<Element> inputs,
                   DoContext& context) override {
     if (custom_do_) {
-      return custom_do_(std::move(config), std::move(accumulated_inputs),
-                        context);
+      return custom_do_(std::move(config), std::move(inputs), context);
     }
     if (do_error_.has_value()) {
       return *do_error_;
@@ -83,8 +94,8 @@ class TestBatchDoFn : public BatchDoFn {
 
     // Emit a summary: concatenate all input data, keys, and blob_ids.
     std::string combined;
-    for (const auto& kv : accumulated_inputs) {
-      combined += kv.data;
+    for (const auto& input : inputs) {
+      combined += input.kv.data;
     }
     Session::KV output;
     output.data = std::move(combined);
@@ -92,13 +103,13 @@ class TestBatchDoFn : public BatchDoFn {
     output.blob_id = config.type_url();
     // Encode input count into the key.
     Any count_key;
-    count_key.set_value(std::to_string(accumulated_inputs.size()));
+    count_key.set_value(std::to_string(inputs.size()));
     output.key = std::move(count_key);
     context.EmitUnencrypted(std::move(output));
 
     // Also emit each input individually so tests can verify key/blob_id.
-    for (auto& kv : accumulated_inputs) {
-      context.EmitUnencrypted(std::move(kv));
+    for (auto& input : inputs) {
+      context.EmitUnencrypted(std::move(input.kv));
     }
     return absl::OkStatus();
   }
@@ -108,15 +119,14 @@ class TestBatchDoFn : public BatchDoFn {
 
   // Configure a custom Do() implementation for specific test cases.
   void SetCustomDo(
-      std::function<absl::Status(Any, std::vector<Session::KV>, DoContext&)>
+      std::function<absl::Status(Any, std::vector<Element>, DoContext&)>
           custom_do) {
     custom_do_ = std::move(custom_do);
   }
 
  private:
   std::optional<absl::Status> do_error_;
-  std::function<absl::Status(Any, std::vector<Session::KV>, DoContext&)>
-      custom_do_;
+  std::function<absl::Status(Any, std::vector<Element>, DoContext&)> custom_do_;
 };
 
 class BatchDoFnTest : public testing::Test {
@@ -264,11 +274,12 @@ TEST_F(BatchDoFnTest, FullLifecycleViaConfigure) {
   ASSERT_THAT(finalize_result, IsOk());
 }
 
-TEST_F(BatchDoFnTest, WritePreservesAssociatedMetadata) {
+WriteRequest CreateWriteRequestWithMetadata(const std::string& blob_id,
+                                            const std::string& key_id) {
   WriteRequest request;
   BlobHeader header;
-  header.set_blob_id("meta_blob_id");
-  header.set_key_id("meta_key_id");
+  header.set_blob_id(blob_id);
+  header.set_key_id(key_id);
   AssociatedMetadata assoc_metadata;
   assoc_metadata.add_metadata()->PackFrom(header);
   request.mutable_first_request_metadata()
@@ -276,23 +287,38 @@ TEST_F(BatchDoFnTest, WritePreservesAssociatedMetadata) {
       ->mutable_kms_symmetric_key_associated_data()
       ->mutable_associated_metadata()
       ->PackFrom(assoc_metadata);
+  return request;
+}
 
-  ASSERT_THAT(fn_.Write(request, "data_with_metadata", context_), IsOk());
+TEST_F(BatchDoFnTest, WritePreservesAssociatedMetadataInInput) {
+  ASSERT_THAT(fn_.Write(CreateWriteRequestWithMetadata("meta_blob_id_1",
+                                                       "meta_key_id_1"),
+                        "data_1", context_),
+              IsOk());
+  ASSERT_THAT(fn_.Write(CreateWriteRequestWithMetadata("meta_blob_id_2",
+                                                       "meta_key_id_2"),
+                        "data_2", context_),
+              IsOk());
 
   bool metadata_verified = false;
-  fn_.SetCustomDo([&](Any config, std::vector<Session::KV> inputs,
+  fn_.SetCustomDo([&](Any config, std::vector<Element> inputs,
                       DoContext& context) -> absl::Status {
-    if (inputs.size() == 1 && inputs[0].associated_metadata.has_value()) {
-      BlobHeader unpacked_header;
-      if (inputs[0].associated_metadata->metadata_size() > 0 &&
-          inputs[0].associated_metadata->metadata(0).UnpackTo(
-              &unpacked_header)) {
-        if (unpacked_header.blob_id() == "meta_blob_id" &&
-            unpacked_header.key_id() == "meta_key_id") {
-          metadata_verified = true;
-        }
-      }
-    }
+    EXPECT_THAT(inputs, SizeIs(2));
+    BlobHeader header_1;
+    EXPECT_EQ(inputs[0].associated_metadata.metadata_size(), 1);
+    EXPECT_TRUE(inputs[0].associated_metadata.metadata_size() > 0 &&
+                inputs[0].associated_metadata.metadata(0).UnpackTo(&header_1));
+    EXPECT_EQ(header_1.blob_id(), "meta_blob_id_1");
+    EXPECT_EQ(header_1.key_id(), "meta_key_id_1");
+    EXPECT_EQ(inputs[0].kv.data, "data_1");
+    BlobHeader header_2;
+    EXPECT_EQ(inputs[1].associated_metadata.metadata_size(), 1);
+    EXPECT_TRUE(inputs[1].associated_metadata.metadata_size() > 0 &&
+                inputs[1].associated_metadata.metadata(0).UnpackTo(&header_2));
+    EXPECT_EQ(header_2.blob_id(), "meta_blob_id_2");
+    EXPECT_EQ(header_2.key_id(), "meta_key_id_2");
+    EXPECT_EQ(inputs[1].kv.data, "data_2");
+    metadata_verified = true;
     return absl::OkStatus();
   });
 
@@ -301,20 +327,111 @@ TEST_F(BatchDoFnTest, WritePreservesAssociatedMetadata) {
   EXPECT_TRUE(metadata_verified);
 }
 
+TEST_F(BatchDoFnTest, WritePreservesProtectedMetadataInInput) {
+  BlobHeader protected_header;
+  protected_header.set_blob_id("protected_blob_id");
+  ProtectedMetadata protected_metadata;
+  protected_metadata.add_metadata()->PackFrom(protected_header);
+  ASSERT_THAT(fn_.Write(WriteRequest(), "data", protected_metadata, context_),
+              IsOk());
+
+  bool metadata_verified = false;
+  fn_.SetCustomDo([&](Any config, std::vector<Element> inputs,
+                      DoContext& context) -> absl::Status {
+    EXPECT_THAT(inputs, SizeIs(1));
+    BlobHeader unpacked;
+    EXPECT_EQ(inputs[0].protected_metadata.metadata_size(), 1);
+    EXPECT_TRUE(inputs[0].protected_metadata.metadata_size() > 0 &&
+                inputs[0].protected_metadata.metadata(0).UnpackTo(&unpacked));
+    EXPECT_EQ(unpacked.blob_id(), "protected_blob_id");
+    EXPECT_EQ(inputs[0].associated_metadata.metadata_size(), 0);
+    metadata_verified = true;
+    return absl::OkStatus();
+  });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
+  EXPECT_TRUE(metadata_verified);
+}
+
+TEST_F(BatchDoFnTest, SetAssociatedMetadataFromInputPropagatesMetadata) {
+  ASSERT_THAT(
+      fn_.Write(CreateWriteRequestWithMetadata("meta_blob_id", "meta_key_id"),
+                "data", context_),
+      IsOk());
+
+  Session::KV emitted_kv;
+  AssociatedMetadata emitted_metadata;
+  EXPECT_CALL(context_, EmitEncrypted(0, _, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_kv),
+                      SaveAssociatedMetadataArg<2>(&emitted_metadata),
+                      Return(true)));
+
+  fn_.SetCustomDo([&](Any config, std::vector<Element> inputs,
+                      DoContext& context) -> absl::Status {
+    context.associated_metadata().Set(inputs[0].associated_metadata);
+    EXPECT_TRUE(context.EmitEncrypted(0, std::move(inputs[0].kv)));
+    return absl::OkStatus();
+  });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
+  EXPECT_EQ(emitted_kv.data, "data");
+  BlobHeader emitted_header;
+  ASSERT_EQ(emitted_metadata.metadata_size(), 1);
+  ASSERT_TRUE(emitted_metadata.metadata(0).UnpackTo(&emitted_header));
+  EXPECT_EQ(emitted_header.blob_id(), "meta_blob_id");
+}
+
+TEST_F(BatchDoFnTest, SetAssociatedMetadataReplacesPreviousInputMetadata) {
+  ASSERT_THAT(
+      fn_.Write(CreateWriteRequestWithMetadata("meta_blob_id", "meta_key_id"),
+                "data_1", context_),
+      IsOk());
+  // The second input has no associated metadata.
+  ASSERT_THAT(fn_.Write(WriteRequest(), "data_2", context_), IsOk());
+
+  // The second output must not inherit the first input's metadata.
+  AssociatedMetadata emitted_metadata;
+  EXPECT_CALL(context_, EmitEncrypted(0, _, _))
+      .WillOnce(
+          DoAll(SaveAssociatedMetadataArg<2>(&emitted_metadata), Return(true)));
+  Session::KV emitted_without_metadata;
+  EXPECT_CALL(context_, EmitEncrypted(0, _))
+      .WillOnce(DoAll(SaveArg<1>(&emitted_without_metadata), Return(true)));
+
+  fn_.SetCustomDo([&](Any config, std::vector<Element> inputs,
+                      DoContext& context) -> absl::Status {
+    for (Element& input : inputs) {
+      context.associated_metadata().Set(std::move(input.associated_metadata));
+      context.protected_metadata().Set(std::move(input.protected_metadata));
+      EXPECT_TRUE(context.EmitEncrypted(0, std::move(input.kv)));
+    }
+    return absl::OkStatus();
+  });
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
+  BlobHeader emitted_header;
+  ASSERT_EQ(emitted_metadata.metadata_size(), 1);
+  ASSERT_TRUE(emitted_metadata.metadata(0).UnpackTo(&emitted_header));
+  EXPECT_EQ(emitted_header.blob_id(), "meta_blob_id");
+  EXPECT_EQ(emitted_without_metadata.data, "data_2");
+}
+
 TEST_F(BatchDoFnTest, DoContextStartsWithEmptyMetadata) {
-  WriteRequest request;
-  ASSERT_THAT(fn_.Write(request, "data", context_), IsOk());
+  ASSERT_THAT(
+      fn_.Write(CreateWriteRequestWithMetadata("meta_blob_id", "meta_key_id"),
+                "data", context_),
+      IsOk());
 
   bool empty_metadata_verified = false;
-  Session::KV emitted_kv;
-  EXPECT_CALL(context_, EmitEncrypted(0, _))
-      .WillOnce(DoAll(SaveArg<1>(&emitted_kv), Return(true)));
+  EXPECT_CALL(context_, EmitEncrypted(0, _)).WillOnce(Return(true));
 
-  fn_.SetCustomDo([&](Any config, std::vector<Session::KV> inputs,
+  fn_.SetCustomDo([&](Any config, std::vector<Element> inputs,
                       DoContext& context) -> absl::Status {
     BlobHeader unpacked_header;
-    // Context starts with empty metadata so UnpackMetadata should return false.
-    EXPECT_FALSE(context.UnpackMetadata(&unpacked_header));
+    EXPECT_FALSE(context.associated_metadata().Unpack(&unpacked_header));
 
     Session::KV output;
     output.data = "output_data";
@@ -326,8 +443,6 @@ TEST_F(BatchDoFnTest, DoContextStartsWithEmptyMetadata) {
   fcp::confidentialcompute::CommitRequest commit_request;
   ASSERT_THAT(fn_.Commit(commit_request, context_), IsOk());
   EXPECT_TRUE(empty_metadata_verified);
-  // Emission should not have any associated_metadata auto-attached.
-  EXPECT_FALSE(emitted_kv.associated_metadata.has_value());
 }
 
 }  // namespace

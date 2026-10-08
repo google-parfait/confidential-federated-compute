@@ -69,6 +69,14 @@ using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::Test;
 
+// Unpacks the AssociatedMetadata packed into the Any passed to
+// Session::Context::EmitEncrypted.
+AssociatedMetadata ToAssociatedMetadata(const google::protobuf::Any& any) {
+  AssociatedMetadata metadata;
+  EXPECT_TRUE(any.UnpackTo(&metadata));
+  return metadata;
+}
+
 class MockBatchedInferenceEngine : public BatchedInferenceEngine {
  public:
   MOCK_METHOD((std::vector<absl::StatusOr<std::string>>), DoBatchedInference,
@@ -147,6 +155,7 @@ class BatchedInferenceFnTest : public Test {
     MockContext mock_context;
     EXPECT_CALL(*mock_engine, DoBatchedInference(_)).Times(0);
     EXPECT_CALL(mock_context, EmitEncrypted(_, _)).Times(0);
+    EXPECT_CALL(mock_context, EmitEncrypted(_, _, _)).Times(0);
     int commit_no = 0;
     for (auto& commit : commits) {
       ++commit_no;
@@ -1039,11 +1048,19 @@ TEST_F(BatchedInferenceFnTest, PropagatesAssociatedMetadataPerBlob) {
         return results;
       });
 
-  std::vector<Session::KV> emitted;
+  // Only blob1 has associated metadata.
+  Session::KV emitted_with_metadata;
+  AssociatedMetadata emitted_metadata;
+  EXPECT_CALL(mock_context, EmitEncrypted(0, _, _))
+      .WillOnce([&](int, Session::KV kv, google::protobuf::Any metadata) {
+        emitted_with_metadata = std::move(kv);
+        emitted_metadata = ToAssociatedMetadata(metadata);
+        return true;
+      });
+  Session::KV emitted_without_metadata;
   EXPECT_CALL(mock_context, EmitEncrypted(0, _))
-      .Times(2)
-      .WillRepeatedly([&emitted](int, Session::KV kv) {
-        emitted.push_back(std::move(kv));
+      .WillOnce([&](int, Session::KV kv) {
+        emitted_without_metadata = std::move(kv);
         return true;
       });
 
@@ -1053,17 +1070,13 @@ TEST_F(BatchedInferenceFnTest, PropagatesAssociatedMetadataPerBlob) {
   ASSERT_THAT(commit_result.status(), IsOk());
   EXPECT_EQ(commit_result->stats().num_inputs_committed(), 2);
 
-  ASSERT_EQ(emitted.size(), 2);
-  EXPECT_EQ(emitted[0].blob_id, "blob1");
-  ASSERT_TRUE(emitted[0].associated_metadata.has_value());
-  ASSERT_EQ(emitted[0].associated_metadata->metadata_size(), 1);
+  EXPECT_EQ(emitted_with_metadata.blob_id, "blob1");
+  ASSERT_EQ(emitted_metadata.metadata_size(), 1);
   BlobHeader emitted_header;
-  ASSERT_TRUE(
-      emitted[0].associated_metadata->metadata(0).UnpackTo(&emitted_header));
+  ASSERT_TRUE(emitted_metadata.metadata(0).UnpackTo(&emitted_header));
   EXPECT_EQ(emitted_header.blob_id(), "header_blob_id");
 
-  EXPECT_EQ(emitted[1].blob_id, "blob2");
-  EXPECT_FALSE(emitted[1].associated_metadata.has_value());
+  EXPECT_EQ(emitted_without_metadata.blob_id, "blob2");
 }
 TEST_F(BatchedInferenceFnTest, CommitWithNoWritesSucceeds) {
   auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
@@ -1076,6 +1089,7 @@ TEST_F(BatchedInferenceFnTest, CommitWithNoWritesSucceeds) {
 
   EXPECT_CALL(*mock_engine, DoBatchedInference(_)).Times(0);
   EXPECT_CALL(mock_context, EmitEncrypted(_, _)).Times(0);
+  EXPECT_CALL(mock_context, EmitEncrypted(_, _, _)).Times(0);
   fcp::confidentialcompute::CommitRequest commit_request;
   EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
               IsOk());
