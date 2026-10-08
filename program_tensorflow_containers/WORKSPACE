@@ -221,6 +221,7 @@ http_archive(
         "//third_party/org_tensorflow:xla_copts.patch",
         "//third_party/org_tensorflow:xla_asserts.patch",
         "//third_party/org_tensorflow:xla_custom_call_status.patch",
+        "//third_party/org_tensorflow:xla_llvm.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",

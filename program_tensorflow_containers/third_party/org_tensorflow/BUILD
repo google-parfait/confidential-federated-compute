@@ -24,4 +24,6 @@ exports_files([
     "xnnpack_typo.patch",
     "xnnpack_amx.patch",
     "xla_asserts.patch",
+    "xla_custom_call_status.patch",
+    "xla_llvm.patch",
 ])
