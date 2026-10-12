@@ -87,6 +87,8 @@ using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalizeResponse;
 using ::fcp::confidentialcompute::InferenceConfiguration;
+using ::fcp::confidentialcompute::PrivacyIdMetadata;
+using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
@@ -293,6 +295,12 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     return ToWriteFinishedResponse(budget_status);
   }
 
+  // Inputs produced by Fn-based containers (e.g. construct_user_session) may
+  // have ProtectedMetadata bundled with the checkpoint. If there is none, the
+  // data is left unchanged and the protected metadata stays empty.
+  ProtectedMetadata protected_metadata;
+  UnbundleAny(protected_metadata, unencrypted_data);
+
   // Save the data size before moving it out so that it can be reported
   // back in metrics.
   size_t unencrypted_data_size = unencrypted_data.size();
@@ -339,9 +347,23 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   // otherwise.
   std::string unique_id;
   if (range_tracker_.GetAggregationWindow().has_value()) {
-    absl::StatusOr<std::string> privacy_id = GetPrivacyId(**parser);
-    if (!privacy_id.ok()) {
-      return ToWriteFinishedResponse(privacy_id.status());
+    // Prefer the privacy ID from the protected metadata, falling back to the
+    // checkpoint's privacy ID tensor.
+    std::optional<std::string> privacy_id;
+    for (const auto& entry : protected_metadata.metadata()) {
+      PrivacyIdMetadata privacy_id_metadata;
+      if (entry.UnpackTo(&privacy_id_metadata)) {
+        privacy_id = privacy_id_metadata.privacy_id();
+        break;
+      }
+    }
+    if (!privacy_id.has_value()) {
+      absl::StatusOr<std::string> checkpoint_privacy_id =
+          GetPrivacyId(**parser);
+      if (!checkpoint_privacy_id.ok()) {
+        return ToWriteFinishedResponse(checkpoint_privacy_id.status());
+      }
+      privacy_id = *std::move(checkpoint_privacy_id);
     }
     unique_id = *std::move(privacy_id);
   } else {
