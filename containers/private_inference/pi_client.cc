@@ -59,6 +59,7 @@ using ::com::google::android::as::oss::privateinference::library::oakutil::
     VerificationKeys;
 using ::com::google::android::as::oss::privateinference::service::api::
     PcsPrivateInferenceFeatureName;
+using ::fcp::confidentialcompute::RuntimeConfig;
 using ::mdi::privatearatea::PcsGenerateContentRequest;
 using ::mdi::privatearatea::PcsPrivateArateaRequest;
 using ::mdi::privatearatea::PcsPrivateArateaResponse;
@@ -66,12 +67,17 @@ using ::oak::session::ClientSession;
 using ::oak::session::v1::SessionRequest;
 using ::oak::session::v1::SessionResponse;
 
+// Base model temperature that `RuntimeConfig.temperature_diff` is applied to.
+constexpr float kDefaultTemperature = 1.0f;
+
 class PiClientImpl : public PiClient {
  public:
   explicit PiClientImpl(std::string server_address,
-                        PcsPrivateInferenceFeatureName feature_name)
+                        PcsPrivateInferenceFeatureName feature_name,
+                        RuntimeConfig runtime_config)
       : server_address_(std::move(server_address)),
-        feature_name_(feature_name) {}
+        feature_name_(feature_name),
+        runtime_config_(std::move(runtime_config)) {}
 
   absl::Status Initialize() {
     // 1. Establish channel
@@ -160,6 +166,14 @@ class PiClientImpl : public PiClient {
 
     PcsGenerateContentRequest generate_request;
     generate_request.add_contents()->add_parts()->set_text(prompt);
+    if (runtime_config_.max_generated_tokens() > 0) {
+      generate_request.mutable_generation_config()->set_max_output_tokens(
+          runtime_config_.max_generated_tokens());
+    }
+    if (runtime_config_.temperature_diff() != 0.0) {
+      generate_request.mutable_generation_config()->set_temperature(
+          kDefaultTemperature + runtime_config_.temperature_diff());
+    }
     *request.mutable_generate_content_request() = generate_request;
 
     auto write_status = session_->Write(request.SerializeAsString());
@@ -277,6 +291,7 @@ class PiClientImpl : public PiClient {
  private:
   std::string server_address_;
   PcsPrivateInferenceFeatureName feature_name_;
+  RuntimeConfig runtime_config_;
   std::unique_ptr<grpc::ClientContext> context_;
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<oak::services::OakSessionV1Service::Stub> stub_;
@@ -288,7 +303,8 @@ class PiClientImpl : public PiClient {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
-    std::string server_address, int feature_name_id) {
+    std::string server_address, int feature_name_id,
+    const RuntimeConfig& runtime_config) {
   if (!::com::google::android::as::oss::privateinference::service::api::
           PcsPrivateInferenceFeatureName_IsValid(feature_name_id)) {
     LOG(WARNING) << "Feature name ID " << feature_name_id
@@ -298,8 +314,8 @@ absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
   PcsPrivateInferenceFeatureName feature_name =
       static_cast<PcsPrivateInferenceFeatureName>(feature_name_id);
 
-  auto client =
-      std::make_unique<PiClientImpl>(std::move(server_address), feature_name);
+  auto client = std::make_unique<PiClientImpl>(std::move(server_address),
+                                               feature_name, runtime_config);
   return client;
 }
 

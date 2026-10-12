@@ -260,5 +260,31 @@ TEST(PiClientTest, InitializeDoesNotFailOnInvalidFeatureId) {
   EXPECT_NE(init_status.code(), absl::StatusCode::kInvalidArgument);
 }
 
+TEST(PiClientTest, CreatePiClientAcceptsRuntimeConfig) {
+  ::fcp::confidentialcompute::RuntimeConfig runtime_config;
+  runtime_config.set_max_generated_tokens(64);
+  runtime_config.set_temperature_diff(-0.5);
+  auto client_or = CreatePiClient("localhost:12345", 100, runtime_config);
+  ASSERT_TRUE(client_or.ok());
+  EXPECT_NE(client_or.value(), nullptr);
+}
+
+// The PcsGenerationConfig subset must stay wire-compatible with the server's
+// GenerationConfig: temperature = 1, max_output_tokens = 5.
+TEST(PiClientTest, PcsGenerationConfigFieldNumbersMatchServerProto) {
+  const auto* descriptor =
+      ::mdi::privatearatea::PcsGenerationConfig::descriptor();
+  ASSERT_NE(descriptor->FindFieldByName("temperature"), nullptr);
+  EXPECT_EQ(descriptor->FindFieldByName("temperature")->number(), 1);
+  ASSERT_NE(descriptor->FindFieldByName("max_output_tokens"), nullptr);
+  EXPECT_EQ(descriptor->FindFieldByName("max_output_tokens")->number(), 5);
+
+  const auto* request_descriptor =
+      ::mdi::privatearatea::PcsGenerateContentRequest::descriptor();
+  ASSERT_NE(request_descriptor->FindFieldByName("generation_config"), nullptr);
+  EXPECT_EQ(request_descriptor->FindFieldByName("generation_config")->number(),
+            3);
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::private_inference
