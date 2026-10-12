@@ -10,13 +10,12 @@ chex
 dm-tree==0.1.9
 etils[epath]
 googleapis-common-protos==1.70.0
-jax==0.10.0
-jaxlib==0.10.0
+jax==0.11.0
+jaxlib==0.11.0
 ml_dtypes>=0.5.0,<0.6
 more-itertools
 networkx
 numpy~=2.0
-optax
 pandas
 portpicker~=1.6
 protobuf==6.33.1 # Match version of protobuf pulled in from source.
