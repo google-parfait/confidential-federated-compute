@@ -86,7 +86,7 @@ PiBatchedInferenceProvider::GetEngineForInferenceConfig(
   }
   int feature_name_id = config.paic_config().paic_feature_id();
   absl::StatusOr<std::unique_ptr<PiClient>> pi_client =
-      CreatePiClient(server_target, feature_name_id);
+      CreatePiClient(server_target, feature_name_id, config.runtime_config());
   if (!pi_client.ok()) {
     LOG(ERROR) << "Failed to create PiClient: " << pi_client.status();
     return pi_client.status();

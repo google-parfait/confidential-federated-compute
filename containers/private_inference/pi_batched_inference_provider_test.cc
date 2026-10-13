@@ -55,5 +55,15 @@ TEST(PiBatchedInferenceProviderTest,
   EXPECT_FALSE(results[0].ok());
 }
 
+TEST(PiBatchedInferenceProviderTest, GetEngineSucceedsWithRuntimeConfig) {
+  PiBatchedInferenceProvider provider("localhost:12345");
+  InferenceConfiguration config;
+  config.mutable_paic_config()->set_paic_feature_id(100);
+  config.mutable_runtime_config()->set_max_generated_tokens(128);
+  config.mutable_runtime_config()->set_temperature_diff(-0.3);
+  auto engine = provider.GetEngineForInferenceConfig(config);
+  EXPECT_NE(engine, nullptr);
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::private_inference

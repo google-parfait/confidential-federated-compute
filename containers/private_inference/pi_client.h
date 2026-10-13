@@ -43,8 +43,14 @@ class PiClient {
 
 // TODO: This raw string client will be replaced by the private aratea feature
 // later.
+//
+// `runtime_config.max_generated_tokens` and `runtime_config.temperature_diff`
+// are forwarded to the PI server as the request's generation config; all other
+// RuntimeConfig fields are ignored.
 absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
-    std::string server_address, int feature_name_id);
+    std::string server_address, int feature_name_id,
+    const fcp::confidentialcompute::RuntimeConfig& runtime_config =
+        fcp::confidentialcompute::RuntimeConfig());
 
 }  // namespace confidential_federated_compute::private_inference
 
