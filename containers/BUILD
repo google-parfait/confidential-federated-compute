@@ -56,6 +56,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:any_cc_proto",
         "@federated_compute//fcp/base:status_converters",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
     ],

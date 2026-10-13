@@ -26,7 +26,6 @@
 #include "containers/session.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
-#include "google/protobuf/repeated_ptr_field.h"
 
 namespace confidential_federated_compute::fns {
 

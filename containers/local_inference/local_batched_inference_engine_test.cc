@@ -49,6 +49,7 @@ using ::fcp::confidentialcompute::InferenceConfiguration;
 using ::fcp::confidentialcompute::InferenceInitializeConfiguration;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Any;
+using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::Field;
@@ -372,7 +373,8 @@ TEST_F(LocalBatchedInferenceIntegrationTest, InternalFailureAbortsCommit) {
       .WillOnce(Return(std::vector<absl::StatusOr<std::string>>{
           absl::InternalError("model blew up")}));
 
-  EXPECT_CALL(mock_context_, EmitEncrypted).Times(0);
+  EXPECT_CALL(mock_context_, EmitEncrypted(_, _)).Times(0);
+  EXPECT_CALL(mock_context_, EmitEncrypted(_, _, _)).Times(0);
   EXPECT_THAT(Commit(), StatusIs(absl::StatusCode::kInternal));
 }
 
