@@ -154,7 +154,7 @@ app_bundle(
 # destination directory. Used by scripts/build.sh for Kokoro release builds.
 _RELEASE_BINARIES = {
     # keep-sorted start
-    ":app_bundle": "local_inference/container.tar",
+    ":app_bundle": "batched_inference_local/container.tar",
     # keep-sorted end
 }
 
