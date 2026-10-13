@@ -22,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,28 +34,6 @@ namespace confidential_federated_compute {
 // A map of counter names to their values. This is used by the Session to track
 // arbitrary metrics.
 using Counters = absl::flat_hash_map<std::string, int64_t>;
-
-// Class used to track the number of active sessions in a container.
-//
-// This class is threadsafe.
-class SessionTracker {
- public:
-  SessionTracker(int max_num_sessions)
-      : available_sessions_(max_num_sessions),
-        max_num_sessions_(max_num_sessions) {};
-
-  // Tries to add a session and returns the amount of memory in bytes that the
-  // session is allowed. Returns 0 if there is no available memory.
-  absl::Status AddSession();
-
-  // Tries to remove a session and returns an error if unable to do so.
-  absl::Status RemoveSession();
-
- private:
-  absl::Mutex mutex_;
-  int available_sessions_ ABSL_GUARDED_BY(mutex_) = 0;
-  int max_num_sessions_;
-};
 
 // Creates WriteFinishedResponse.
 fcp::confidentialcompute::WriteFinishedResponse ToWriteFinishedResponse(

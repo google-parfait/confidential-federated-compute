@@ -51,7 +51,6 @@ cc_library(
     deps = [
         ":crypto",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -70,7 +69,6 @@ cc_test(
         ":session",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/time",
         "@com_google_protobuf//:any_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest",

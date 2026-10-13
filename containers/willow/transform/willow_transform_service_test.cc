@@ -155,7 +155,6 @@ class WillowTransformServiceTest : public Test {
     grpc::ClientContext context;
     InitializeRequest request;
     InitializeResponse response;
-    request.set_max_num_sessions(8);
 
     // Add Aggregation Configuration to the request.
     request.mutable_configuration()->PackFrom(aggregation_config_);

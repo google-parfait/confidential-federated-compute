@@ -157,12 +157,11 @@ class ConfidentialTransformBase
       const std::vector<absl::string_view>& omitted_key_ids);
 
   absl::Mutex mutex_;
-  // The mutex is used to protect the optional wrapping decryptor_ and
-  // session_tracker_ to ensure they are initialized, but the Decryptor and
-  // SessionTracker are themselves threadsafe.
+  // The mutex is used to protect the optional wrapping decryptor_ to ensure it
+  // is initialized, but the Decryptor is itself threadsafe. decryptor_ is set
+  // exactly once in StreamInitialize, so it also indicates whether the
+  // transform has been initialized.
   std::optional<confidential_federated_compute::Decryptor> decryptor_
-      ABSL_GUARDED_BY(mutex_);
-  std::optional<confidential_federated_compute::SessionTracker> session_tracker_
       ABSL_GUARDED_BY(mutex_);
   // TODO: Refactor ConfidentialTransformBase so it's not aware of KMS.
   // Future applications may not be based on KMS.

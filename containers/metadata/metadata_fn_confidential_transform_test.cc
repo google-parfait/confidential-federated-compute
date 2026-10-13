@@ -142,7 +142,6 @@ TEST_F(MetadataConfidentialTransformInitializeTest,
 
   ClientContext context;
   InitializeRequest request;
-  request.set_max_num_sessions(1);
   request.mutable_configuration()->PackFrom(init_config);
   InitializeResponse response;
 
@@ -210,7 +209,6 @@ class MetadataConfidentialTransformSessionTest
 
     InitializeRequest request;
     request.mutable_configuration()->PackFrom(init_config);
-    request.set_max_num_sessions(1);
     InitializeResponse response;
 
     AuthorizeConfidentialTransformResponse::ProtectedResponse

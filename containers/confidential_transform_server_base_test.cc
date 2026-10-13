@@ -83,7 +83,6 @@ using ::testing::Test;
 using SessionStream =
     ::grpc::ClientReaderWriter<SessionRequest, SessionResponse>;
 
-inline constexpr int kMaxNumSessions = 8;
 constexpr absl::string_view kKeyId = "key_id";
 constexpr absl::string_view kKmsPublicKey = "kms_public_key";
 constexpr absl::string_view kInvocationId = "invocation_id";
@@ -267,7 +266,6 @@ class ConfidentialTransformServerBaseTest : public Test {
     StreamInitializeRequest request;
     request.mutable_initialize_request()->mutable_configuration()->PackFrom(
         config_status);
-    request.mutable_initialize_request()->set_max_num_sessions(kMaxNumSessions);
     *request.mutable_initialize_request()->mutable_protected_response() =
         encrypted_request;
     return request;
@@ -632,42 +630,6 @@ TEST_F(ConfidentialTransformServerBaseTest, SkippedConfigureRequest) {
   ASSERT_TRUE(stream->Read(&read_response));
   ASSERT_TRUE(stream->Read(&finalize_response));
   ASSERT_THAT(FromGrpcStatus(stream->Finish()), IsOk());
-}
-
-TEST_F(ConfidentialTransformServerBaseTest,
-       StreamInitializeSessionRejectsMoreThanMaximumNumSessions) {
-  InitializeTransform();
-
-  std::vector<std::unique_ptr<SessionStream>> streams;
-  std::vector<std::unique_ptr<grpc::ClientContext>> contexts;
-  for (int i = 0; i < kMaxNumSessions; i++) {
-    std::unique_ptr<grpc::ClientContext> session_context =
-        std::make_unique<grpc::ClientContext>();
-    SessionRequest session_request;
-    SessionResponse session_response;
-    session_request.mutable_configure()->set_chunk_size(1000);
-
-    std::unique_ptr<SessionStream> stream =
-        stub_->Session(session_context.get());
-    ASSERT_TRUE(stream->Write(session_request));
-    ASSERT_TRUE(stream->Read(&session_response));
-
-    // Keep the context and stream so they don't go out of scope and end the
-    // session.
-    contexts.emplace_back(std::move(session_context));
-    streams.emplace_back(std::move(stream));
-  }
-
-  grpc::ClientContext rejected_context;
-  SessionRequest rejected_request;
-  SessionResponse rejected_response;
-  rejected_request.mutable_configure()->set_chunk_size(1000);
-
-  std::unique_ptr<SessionStream> stream = stub_->Session(&rejected_context);
-  ASSERT_TRUE(stream->Write(rejected_request));
-  ASSERT_FALSE(stream->Read(&rejected_response));
-  ASSERT_EQ(stream->Finish().error_code(),
-            grpc::StatusCode::FAILED_PRECONDITION);
 }
 
 TEST_F(ConfidentialTransformServerBaseTest,
