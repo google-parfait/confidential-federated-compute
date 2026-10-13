@@ -25,6 +25,10 @@ cc_library(
     hdrs = [
         "mocks.h",
     ],
+    # Public rather than the package default because the container workspaces
+    # under containers/ that are their own Bazel modules (e.g.
+    # containers/local_inference) are not subpackages of this repository.
+    visibility = ["//visibility:public"],
     deps = [
         "//containers:session",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",

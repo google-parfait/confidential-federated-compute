@@ -15,7 +15,7 @@
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 package(
-    default_visibility = ["//:__subpackages__"],
+    default_visibility = ["//visibility:public"],
     features = ["layering_check"],
 )
 
@@ -24,11 +24,13 @@ cc_library(
     srcs = ["row_view.cc"],
     hdrs = ["row_view.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@com_google_protobuf//:protobuf",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
     ],

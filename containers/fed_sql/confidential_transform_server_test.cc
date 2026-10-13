@@ -29,12 +29,12 @@
 #include "cc/crypto/encryption_key.h"
 #include "containers/big_endian.h"
 #include "containers/blob_metadata.h"
+#include "containers/common/local_inference/inference_model.h"
+#include "containers/common/local_inference/testing/mocks.h"
 #include "containers/common/time_budget/budget.pb.h"
 #include "containers/crypto.h"
 #include "containers/crypto_test_utils.h"
-#include "containers/fed_sql/inference_model.h"
 #include "containers/fed_sql/range_tracker.h"
-#include "containers/fed_sql/testing/mocks.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "fcp/base/status_converters.h"
 #include "fcp/confidentialcompute/constants.h"
@@ -78,7 +78,6 @@ using ::confidential_federated_compute::fed_sql::testing::
 using ::confidential_federated_compute::fed_sql::testing::
     BuildMessageCheckpoint;
 using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
-using ::confidential_federated_compute::fed_sql::testing::MockInferenceModel;
 using ::fcp::base::FromGrpcStatus;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
@@ -418,26 +417,6 @@ class FedSqlServerTest : public Test {
     int port;
     const std::string server_address = "[::1]:";
 
-    ON_CALL(*mock_inference_model_, BuildGemmaCppModel)
-        .WillByDefault(Return(absl::OkStatus()));
-    ON_CALL(*mock_inference_model_, RunGemmaCppInference)
-        .WillByDefault([](const fcp::confidentialcompute::Prompt&, const Input&,
-                          absl::Span<const size_t>, const std::string&)
-                           -> absl::StatusOr<InferenceModel::InferenceOutput> {
-          std::initializer_list<absl::string_view> topic_values = {
-              "topic_value"};
-          absl::StatusOr<Tensor> tensor = Tensor::Create(
-              DataType::DT_STRING,
-              TensorShape({static_cast<int64_t>(topic_values.size())}),
-              std::make_unique<MutableVectorData<absl::string_view>>(
-                  topic_values),
-              /*name=*/"topic");
-          if (!tensor.ok()) {
-            return tensor.status();
-          }
-          return InferenceModel::InferenceOutput{.tensor = std::move(*tensor),
-                                                 .per_row_output_counts = {1}};
-        });
     auto encryption_key_handle = std::make_unique<EncryptionKeyProvider>(
         EncryptionKeyProvider::Create().value());
     oak_client_encryptor_ =
@@ -600,8 +579,6 @@ class FedSqlServerTest : public Test {
     return stream;
   }
 
-  std::shared_ptr<NiceMock<MockInferenceModel>> mock_inference_model_ =
-      std::make_shared<NiceMock<MockInferenceModel>>();
   std::unique_ptr<FedSqlConfidentialTransform> service_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<ConfidentialTransform::Stub> stub_;

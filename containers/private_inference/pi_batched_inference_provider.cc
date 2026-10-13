@@ -60,10 +60,17 @@ PiBatchedInferenceProvider::PiBatchedInferenceProvider(
     std::string server_address)
     : server_address_(std::move(server_address)) {}
 
-std::shared_ptr<
-    ::confidential_federated_compute::inference::BatchedInferenceEngine>
+absl::StatusOr<std::shared_ptr<
+    ::confidential_federated_compute::inference::BatchedInferenceEngine>>
 PiBatchedInferenceProvider::GetEngineForInferenceConfig(
-    const fcp::confidentialcompute::InferenceConfiguration& config) {
+    const fcp::confidentialcompute::InferenceInitializeConfiguration&
+        init_config,
+    const ::confidential_federated_compute::fns::WriteConfigurationMap&
+        write_configuration_map) {
+  // This backend proxies inference out to a host process, so it has no use for
+  // the model weight blobs streamed during StreamInitialize.
+  const fcp::confidentialcompute::InferenceConfiguration& config =
+      init_config.inference_config();
   int port = DEFAULT_HOST_PROXY_PORT_WHEN_UNSPECIFIED;
   if (config.has_proxy_config() &&
       config.proxy_config().host_proxy_port() > 0) {
@@ -74,15 +81,15 @@ PiBatchedInferenceProvider::GetEngineForInferenceConfig(
   // or hostname without a port.
   std::string server_target = absl::StrFormat("%s:%d", server_address_, port);
   if (!config.has_paic_config()) {
-    LOG(ERROR) << "InferenceConfiguration is missing paic_config.";
-    return nullptr;
+    return absl::InvalidArgumentError(
+        "InferenceConfiguration is missing paic_config.");
   }
   int feature_name_id = config.paic_config().paic_feature_id();
   absl::StatusOr<std::unique_ptr<PiClient>> pi_client =
       CreatePiClient(server_target, feature_name_id);
   if (!pi_client.ok()) {
     LOG(ERROR) << "Failed to create PiClient: " << pi_client.status();
-    return nullptr;
+    return pi_client.status();
   }
   return std::make_shared<PiBatchedInferenceEngine>(
       std::move(pi_client.value()));

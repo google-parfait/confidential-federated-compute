@@ -40,16 +40,3 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
     ],
 )
-
-cc_library(
-    name = "mocks",
-    testonly = True,
-    hdrs = ["mocks.h"],
-    visibility = ["//containers/fed_sql:__pkg__"],
-    deps = [
-        "//containers/common/io/tabular:input",
-        "//containers/fed_sql:inference_model",
-        "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
-        "@googletest//:gtest",
-    ],
-)

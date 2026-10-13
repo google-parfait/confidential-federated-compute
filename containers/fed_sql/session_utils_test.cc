@@ -21,7 +21,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "containers/fed_sql/inference_model.h"
+#include "containers/common/local_inference/inference_model.h"
 #include "containers/fed_sql/testing/test_utils.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -39,6 +39,8 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fed_sql::testing::
     BuildFedSqlGroupByCheckpoint;
+using ::confidential_federated_compute::local_inference::
+    SessionInferenceConfiguration;
 using ::fcp::confidentialcompute::ColumnSchema;
 using ::fcp::confidentialcompute::TableSchema;
 using ::tensorflow_federated::aggregation::AggVector;

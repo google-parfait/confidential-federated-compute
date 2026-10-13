@@ -110,10 +110,11 @@ class MockBatchedInferenceEngine : public BatchedInferenceEngine {
 class MockBatchedInferenceEngineProvider
     : public BatchedInferenceEngineProvider {
  public:
-  MOCK_METHOD((std::shared_ptr<BatchedInferenceEngine>),
+  MOCK_METHOD((absl::StatusOr<std::shared_ptr<BatchedInferenceEngine>>),
               GetEngineForInferenceConfig,
-              (const fcp::confidentialcompute::InferenceConfiguration&
-                   inference_config),
+              (const fcp::confidentialcompute::InferenceInitializeConfiguration&
+                   init_config,
+               const fns::WriteConfigurationMap& write_configuration_map),
               (override));
 };
 
@@ -130,7 +131,7 @@ class BatchedInferenceServerTest : public ::testing::Test {
     mock_batched_inference_engine_provider_ =
         std::make_shared<NiceMock<MockBatchedInferenceEngineProvider>>();
     EXPECT_CALL(*mock_batched_inference_engine_provider_,
-                GetEngineForInferenceConfig(_))
+                GetEngineForInferenceConfig(_, _))
         .WillRepeatedly(Return(mock_batched_inference_engine_));
     absl::StatusOr<std::unique_ptr<BatchedInferenceServer>> server =
         CreateBatchedInferenceServer(
@@ -322,14 +323,22 @@ TEST_F(BatchedInferenceServerTest, FactoryHandlesInferenceConfig) {
       testing::GetInferenceConfigForTest();
   EXPECT_CALL(
       *mock_batched_inference_engine_provider_,
-      GetEngineForInferenceConfig(Property(
-          &InferenceConfiguration::runtime_config,
-          Property(&fcp::confidentialcompute::RuntimeConfig::max_batch_size,
-                   Eq(inference_config.runtime_config().max_batch_size())))))
+      GetEngineForInferenceConfig(
+          Property(
+              &InferenceInitializeConfiguration::inference_config,
+              Property(
+                  &InferenceConfiguration::runtime_config,
+                  Property(
+                      &fcp::confidentialcompute::RuntimeConfig::max_batch_size,
+                      Eq(inference_config.runtime_config().max_batch_size())))),
+          _))
       .Times(1)
-      .WillOnce(Invoke([this](const InferenceConfiguration& config) {
-        return mock_batched_inference_engine_;
-      }));
+      .WillOnce(Invoke(
+          [this](const InferenceInitializeConfiguration& init_config,
+                 const fns::WriteConfigurationMap& write_configuration_map)
+              -> absl::StatusOr<std::shared_ptr<BatchedInferenceEngine>> {
+            return mock_batched_inference_engine_;
+          }));
   auto [session_pub_key_cose, session_priv_key_cose] = GenerateKeyPair(kKeyId);
   grpc::ClientContext session_context;
   SessionStream session_stream;

@@ -53,9 +53,11 @@ class TestBatchedInferenceEngineProviderImpl
  public:
   virtual ~TestBatchedInferenceEngineProviderImpl() {}
 
-  virtual std::shared_ptr<BatchedInferenceEngine> GetEngineForInferenceConfig(
-      const fcp::confidentialcompute::InferenceConfiguration& inference_config)
-      override {
+  absl::StatusOr<std::shared_ptr<BatchedInferenceEngine>>
+  GetEngineForInferenceConfig(
+      const fcp::confidentialcompute::InferenceInitializeConfiguration&
+          init_config,
+      const fns::WriteConfigurationMap& write_configuration_map) override {
     return std::make_shared<TestBatchedInferenceEngineImpl>();
   }
 };

@@ -607,6 +607,55 @@ TEST_F(BatchedInferenceFnTest, InferenceHandlesEmptyResponse) {
       1);
 }
 
+TEST_F(BatchedInferenceFnTest, UnsetMaxPromptSizeUsesDefault) {
+  // No runtime_config.max_prompt_size: prompts must not be truncated to empty.
+  InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    inference_task {
+      column_config {
+        input_column_names: "transcript"
+        output_column_name: "out_col"
+      }
+      prompt { prompt_template: "none {transcript}" }
+    }
+    runtime_config { max_batch_size: 10 }
+  )pb");
+
+  auto mock_engine = std::make_shared<NiceMock<MockBatchedInferenceEngine>>();
+  auto factory = CreateBatchedInferenceFnFactory(mock_engine, config);
+  ASSERT_THAT(factory.status(), IsOk());
+  auto fn = factory.value()->CreateFn();
+  ASSERT_THAT(fn.status(), IsOk());
+  MockContext mock_context;
+
+  std::string input =
+      testing::GetPrivateInferenceInputCheckpointForTest({"bark", "meow"});
+  WriteRequest write_request;
+  write_request.mutable_first_request_metadata()
+      ->mutable_unencrypted()
+      ->set_blob_id("blob1");
+  *write_request.mutable_first_request_configuration() = Any();
+  ASSERT_THAT(fn.value()->Write(write_request, input, mock_context).status(),
+              IsOk());
+
+  EXPECT_CALL(*mock_engine, DoBatchedInference(::testing::ElementsAre(
+                                "none bark", "none meow")))
+      .WillOnce([](std::vector<std::string> prompts) {
+        return std::vector<absl::StatusOr<std::string>>{"bark_result",
+                                                        "meow_result"};
+      });
+
+  std::string expected = testing::GetCustomInferenceOutputCheckpointForTest(
+      {{"transcript", {"bark", "meow"}},
+       {"out_col", {"bark_result", "meow_result"}}});
+  EXPECT_CALL(mock_context,
+              EmitEncrypted(0, Field(&Session::KV::data, Eq(expected))))
+      .WillOnce(Return(true));
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn.value()->Commit(commit_request, mock_context).status(),
+              IsOk());
+}
+
 TEST_F(BatchedInferenceFnTest, InferenceHandlesParsingFailureGracefully) {
   InferenceConfiguration config = PARSE_TEXT_PROTO(R"pb(
     inference_task {

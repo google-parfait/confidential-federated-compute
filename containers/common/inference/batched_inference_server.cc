@@ -77,7 +77,6 @@ FnFactoryProvider CreateBatchedInferenceFnFactoryProvider(
       *container_config.mutable_inference_init_config() =
           std::move(legacy_init_config);
     }
-
     std::shared_ptr<MessageFactory> message_factory = nullptr;
     std::string on_device_query_name;
     if (container_config.has_private_logger_uploads_config()) {
@@ -105,14 +104,15 @@ FnFactoryProvider CreateBatchedInferenceFnFactoryProvider(
                                  .on_device_query_name();
     }
 
-    const InferenceConfiguration& inference_config =
-        container_config.inference_init_config().inference_config();
-    std::shared_ptr<BatchedInferenceEngine> batched_inference_engine =
+    const InferenceInitializeConfiguration& init_config =
+        container_config.inference_init_config();
+    ABSL_ASSIGN_OR_RETURN(
+        std::shared_ptr<BatchedInferenceEngine> batched_inference_engine,
         batched_inference_engine_provider->GetEngineForInferenceConfig(
-            inference_config);
+            init_config, write_configuration_map));
     return CreateBatchedInferenceFnFactory(
-        batched_inference_engine, inference_config, std::move(message_factory),
-        std::move(on_device_query_name));
+        batched_inference_engine, init_config.inference_config(),
+        std::move(message_factory), std::move(on_device_query_name));
   };
 }
 

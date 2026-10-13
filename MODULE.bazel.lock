@@ -543,10 +543,10 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
-    "//:extensions.bzl%cfc_dev_deps": {
+    "//containers/common/local_inference:llama_cpp_deps.bzl%llama_cpp_deps": {
       "general": {
-        "bzlTransitiveDigest": "l5bgovPiNw0e0z4Zv1b2NoItc1Cy+Q2g8uXs56UD+Qk=",
-        "usagesDigest": "lvi+aa+ZpqB+3w8cHJnloG6OiZOFxLbNjogsfG7ulmk=",
+        "bzlTransitiveDigest": "b08K27JgGmSMD+tIg8/bltz/w6xUwsFyXNbjrrvd7Wk=",
+        "usagesDigest": "SmYvgyDyFfJ/68OvzriYHZAU7YgD1OUDurJNWcCYxOk=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -554,13 +554,13 @@
           "llama_cpp": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
-              "build_file": "@@//third_party/llama_cpp:llama_cpp.BUILD.bzl",
+              "build_file": "@@//containers/common/local_inference:llama_cpp.BUILD.bzl",
               "integrity": "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
               "patch_args": [
                 "-p1"
               ],
               "patches": [
-                "@@//third_party/llama_cpp:add_build_info.patch"
+                "@@//containers/common/local_inference:add_build_info.patch"
               ],
               "strip_prefix": "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
               "url": "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz"
