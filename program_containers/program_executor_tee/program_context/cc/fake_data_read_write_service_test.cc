@@ -138,7 +138,7 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForEncryptedMessage) {
   // Check that the DataReadWrite service logged the blob_id.
   std::vector<std::string> requested_ids =
       fake_data_read_write_service_->GetReadRequestIds();
-  EXPECT_EQ(requested_ids.size(), 1);
+  ASSERT_EQ(requested_ids.size(), 1);
   EXPECT_EQ(requested_ids[0], blob_id);
 }
 
@@ -167,7 +167,7 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForPlaintextMessage) {
   // Check that the DataReadWrite service logged the blob_id.
   std::vector<std::string> requested_ids =
       fake_data_read_write_service_->GetReadRequestIds();
-  EXPECT_EQ(requested_ids.size(), 1);
+  ASSERT_EQ(requested_ids.size(), 1);
   EXPECT_EQ(requested_ids[0], blob_id);
 }
 
@@ -207,7 +207,7 @@ TEST_F(FakeDataReadWriteServiceTest, ReadRequestSuccessForMultipleMessages) {
   // blob_ids.
   std::vector<std::string> requested_ids =
       fake_data_read_write_service_->GetReadRequestIds();
-  EXPECT_EQ(requested_ids.size(), 3);
+  ASSERT_EQ(requested_ids.size(), 3);
   EXPECT_EQ(requested_ids[0], read_blob_ids[0]);
   EXPECT_EQ(requested_ids[1], read_blob_ids[1]);
   EXPECT_EQ(requested_ids[2], read_blob_ids[2]);

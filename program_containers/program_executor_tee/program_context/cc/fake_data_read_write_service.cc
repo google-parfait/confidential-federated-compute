@@ -111,9 +111,9 @@ grpc::Status FakeDataReadWriteService::Read(
     return grpc::Status(grpc::StatusCode::NOT_FOUND,
                         "Requested key " + lookup_key + " not found.");
   }
-  response_writer->Write(id_to_read_response_[lookup_key]);
   // Store the lookup key from the request.
   read_request_ids_.push_back(lookup_key);
+  response_writer->Write(id_to_read_response_[lookup_key]);
   return grpc::Status::OK;
 }
 
