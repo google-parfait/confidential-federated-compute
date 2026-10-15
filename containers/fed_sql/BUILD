@@ -156,60 +156,6 @@ cc_library(
 )
 
 cc_library(
-    name = "dp_unit",
-    srcs = ["dp_unit.cc"],
-    hdrs = ["dp_unit.h"],
-    deps = [
-        ":session_utils",
-        "//containers/common/intervals:interval_set",
-        "//containers/common/io/tabular:row_set",
-        "//containers/common/io/tabular:row_view",
-        "//containers/common/sqlite:sqlite_adapter",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@federated_compute//fcp/confidentialcompute:constants",
-        "@federated_compute//fcp/confidentialcompute:time_window_utilities",
-        "@federated_compute//fcp/protos/confidentialcompute:windowing_schedule_cc_proto",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_parser",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:in_memory_checkpoint_parser",
-    ],
-)
-
-cc_test(
-    name = "dp_unit_test",
-    srcs = ["dp_unit_test.cc"],
-    deps = [
-        ":dp_unit",
-        ":session_utils",
-        "//containers/common/io/tabular:input",
-        "//containers/common/io/tabular:row_set",
-        "//containers/common/sqlite:sqlite_adapter",
-        "//containers/fed_sql/testing:test_utils",
-        "//testing:parse_text_proto",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/types:optional",
-        "@federated_compute//fcp/confidentialcompute:constants",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:config_converter",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/testing:test_data",
-    ],
-)
-
-cc_library(
     name = "inference_runner",
     srcs = ["inference_runner.cc"],
     hdrs = ["inference_runner.h"],
@@ -288,7 +234,6 @@ cc_library(
     srcs = ["kms_session.cc"],
     hdrs = ["kms_session.h"],
     deps = [
-        ":dp_unit",
         ":inference_runner",
         ":partition_private_state",
         ":private_state",

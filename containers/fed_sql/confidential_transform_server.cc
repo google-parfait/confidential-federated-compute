@@ -437,20 +437,6 @@ absl::Status FedSqlConfidentialTransform::StreamInitializeTransform(
   ABSL_RETURN_IF_ERROR(InitializePrivateState(
       fed_sql_config_constraints.access_budget(), std::move(autotuning_data)));
 
-  if (fed_sql_config_constraints.has_dp_windowing_schedule()) {
-    DpUnitParameters dp_params;
-    if (!fed_sql_config_constraints.dp_windowing_schedule().UnpackTo(
-            &dp_params.windowing_schedule)) {
-      return absl::InvalidArgumentError(
-          "Failed to unpack dp_windowing_schedule from google::protobuf::Any.");
-    }
-    for (const auto& column_name :
-         fed_sql_config_constraints.dp_column_names()) {
-      dp_params.column_names.push_back(column_name);
-    }
-    session_config_.dp_unit_parameters = std::move(dp_params);
-  }
-
   if (fed_sql_config.has_inference_init_config()) {
     ABSL_RETURN_IF_ERROR(InitializeSessionInferenceConfiguration(
         fed_sql_config.inference_init_config()));
