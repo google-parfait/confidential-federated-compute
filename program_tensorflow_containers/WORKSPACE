@@ -109,7 +109,7 @@ http_archive(
 
 http_archive(
     name = "dp_accounting",
-    integrity = "sha256-oc/LSWvPh7iYwCrvfMc3aVhNLKdpFF3Zw//0vKsEYa8=",
+    integrity = "sha256-V4L8HP+XYahJmSLvAjTAkTsJ1P7pfRGHuwLczGsh9qQ=",
     patch_cmds = [
         # The upstream repo ships BUILD.bazel files (which take precedence over
         # BUILD) that reference repos not present here (@accounting_py_pip_deps).
@@ -119,18 +119,18 @@ http_archive(
     patches = [
         "//third_party/dp_accounting:package.patch",
     ],
-    strip_prefix = "differential-privacy-4a4a7b395028bf8338f04494a66c2832ebdcb5cf/python/dp_accounting",
-    url = "https://github.com/google/differential-privacy/archive/4a4a7b395028bf8338f04494a66c2832ebdcb5cf.tar.gz",
+    strip_prefix = "differential-privacy-762f95e745bad24abf2ae351c5a9d065a8423780/python/dp_accounting",
+    url = "https://github.com/google/differential-privacy/archive/762f95e745bad24abf2ae351c5a9d065a8423780.tar.gz",
 )
 
 http_archive(
     name = "dpsynth",
-    integrity = "sha256-Si5Lbst6ME6RoF2g+3AjI/HswB4mni0O6qMHlgWhu2g=",
+    integrity = "sha256-IPXCOTscWhR5J2eYDZo+EH5UMRQV+9Kc9myX8wUO3xM=",
     patches = [
         "//third_party/dpsynth:package.patch",
     ],
-    strip_prefix = "dpsynth-472b944909b5199975af66eea425d3a974e670e3",
-    url = "https://github.com/google/dpsynth/archive/472b944909b5199975af66eea425d3a974e670e3.tar.gz",
+    strip_prefix = "dpsynth-649384019341875e9be2fcd4ef6e778ab17343f5",
+    url = "https://github.com/google/dpsynth/archive/649384019341875e9be2fcd4ef6e778ab17343f5.tar.gz",
 )
 
 http_archive(
@@ -141,6 +141,7 @@ http_archive(
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' fcp/confidentialcompute/python/BUILD",
+        "sed -i 's|@pypi//optax|@optax//optax|g' fcp/confidentialcompute/python/BUILD",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
     strip_prefix = "federated-compute-bb01e11345332e41310de70d2672b37eedd8b285",
@@ -172,15 +173,16 @@ http_archive(
 
 http_archive(
     name = "jax_privacy",
-    integrity = "sha256-zjVOFalwAsN7TWeW27wAtfAkMbU8Lk+cqwb6iwUrFCA=",
+    integrity = "sha256-iGuwn6fTss2LwtfCaePMewwSpmVbRp9r+k69UVvrx0U=",
     patch_cmds = [
         "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' jax_privacy/BUILD",
+        "sed -i 's|@pypi//optax|@optax//optax|g' jax_privacy/BUILD",
     ],
     patches = [
         "@confidential_federated_compute_program//third_party/jax_privacy:package.patch",
     ],
-    strip_prefix = "jax_privacy-03f69a78171369361df19230274979b59b3c4f36",
-    url = "https://github.com/google-deepmind/jax_privacy/archive/03f69a78171369361df19230274979b59b3c4f36.tar.gz",
+    strip_prefix = "jax_privacy-e8b86cfbac1bfa04df0b6a7f539ff248efa2565a",
+    url = "https://github.com/google-deepmind/jax_privacy/archive/e8b86cfbac1bfa04df0b6a7f539ff248efa2565a.tar.gz",
 )
 
 git_repository(
@@ -193,12 +195,12 @@ git_repository(
 
 http_archive(
     name = "mbi",
-    integrity = "sha256-ke95l544v7XsaAE+EY7ntUlExRvMmjxKq4CGzIhm2aU=",
+    integrity = "sha256-tAz2vkCd+r98AKOOgxS0NEwIcnAyUrfrIo46WmUrva4=",
     patches = [
         "//third_party/mbi:package.patch",
     ],
-    strip_prefix = "mbi-07635f9a0f1150237a1da1083a29b38aa4ff8645",
-    url = "https://github.com/ryan112358/mbi/archive/07635f9a0f1150237a1da1083a29b38aa4ff8645.tar.gz",
+    strip_prefix = "mbi-ab5578e5471d152dbc6aa74eb1e999145a88d2c8",
+    url = "https://github.com/ryan112358/mbi/archive/ab5578e5471d152dbc6aa74eb1e999145a88d2c8.tar.gz",
 )
 
 http_archive(
@@ -210,6 +212,16 @@ http_archive(
     ],
     strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
     url = "https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz",
+)
+
+http_archive(
+    name = "optax",
+    integrity = "sha256-bEfqy0XF6K3sGiapC5wWoOCSN81B4vRXSsrTuDe8zbM=",
+    patches = [
+        "//third_party/optax:package.patch",
+    ],
+    strip_prefix = "optax-8589d974e565fbf1bfa1cdf8d94f5ecdf8ebe93c",
+    url = "https://github.com/google-deepmind/optax/archive/8589d974e565fbf1bfa1cdf8d94f5ecdf8ebe93c.tar.gz",
 )
 
 http_archive(

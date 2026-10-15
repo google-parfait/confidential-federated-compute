@@ -129,9 +129,9 @@ trusted_py_runtime(
         "@federated_compute//fcp/confidentialcompute/python:accounting",
         "@federated_compute//fcp/confidentialcompute/python:dp_mf_aggregator",
         "@federated_compute//fcp/confidentialcompute/python:min_sep_data_source",
+        "@optax//optax",
         "@pypi//jax",
         "@pypi//jaxlib",
-        "@pypi//optax",
     ],
     source_repo_names = [
         "confidential_federated_compute_program",
@@ -140,6 +140,7 @@ trusted_py_runtime(
         "federated_language",
         "federated_compute",
         "jax_privacy",
+        "optax",
         "org_tensorflow_federated",
         "oak",
     ],
@@ -176,7 +177,7 @@ cc_test(
         "PYTHONPATH": "$(PYTHONPATH)",
         "PYTHONHOME": "$(PYTHONHOME)",
     },
-    linkopts = ["-Wl,--version-script=$(location :hide_symbols.lds)"],
+    linkopts = ["-Wl,--version-script=$(execpath :hide_symbols.lds)"],
     linkstatic = True,
     tags = ["noasan"],
     toolchains = [":trusted_program_py_runtime"],
@@ -208,7 +209,7 @@ cc_binary(
     ],
     linkopts = [
         "-Wl,-s",
-        "-Wl,--version-script=$(location :hide_symbols.lds)",
+        "-Wl,--version-script=$(execpath :hide_symbols.lds)",
         # Bazel symlinks won't make it into the container tarball, so we need
         # to include the path of libpython since the Bazel _solib symlink will
         # be missing. Note: $(PYTHONHOME) ends in a slash, and the linker does
