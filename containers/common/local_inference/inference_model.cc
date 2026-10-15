@@ -48,7 +48,7 @@ using ::gcpp::ThreadingContext;
 using ::gcpp::TimingInfo;
 using ::gcpp::WrapAndTokenize;
 
-// Set the default max_output_tokens to 128. This can be overridden by the
+// Set the default max_output_tokens to 1024. This can be overridden by the
 // RuntimeConfig.max_generated_tokens field in the inference_configuration_.
 constexpr size_t kMaxOutputTokens = 1024;
 constexpr size_t kNumTokensPerBatch = 2048;
@@ -75,12 +75,12 @@ InferenceModel::BuildGemmaCppModel(
   LoaderArgs loader_args(gemma_config.tokenizer_path,
                          gemma_config.model_weight_path);
   InferenceArgs inference_args;
-  size_t seq_len =
+  int32_t seq_len =
       inference_configuration.initialize_configuration.inference_config()
           .runtime_config()
           .seq_len();
   if (seq_len > 0) {
-    inference_args.seq_len = seq_len;
+    inference_args.seq_len = static_cast<size_t>(seq_len);
   }
   ThreadingArgs threading_args;
   ThreadingContext loading_ctx(threading_args);
@@ -88,7 +88,7 @@ InferenceModel::BuildGemmaCppModel(
     gemma_model->gemma =
         std::make_unique<Gemma>(loader_args, inference_args, loading_ctx);
   } catch (const std::exception& e) {
-    return absl::InvalidArgumentError(
+    return absl::InternalError(
         absl::StrCat("Failed to load gemma.cpp model: ", e.what()));
   }
   gemma_model->ctx = std::make_unique<ThreadingContext>(threading_args);
@@ -165,12 +165,12 @@ std::vector<absl::StatusOr<std::string>> InferenceModel::GenerateBatchGemmaCpp(
   RuntimeConfig inference_runtime_config =
       inference_configuration_.initialize_configuration.inference_config()
           .runtime_config();
-  size_t config_max_output_tokens =
+  int32_t config_max_output_tokens =
       inference_configuration_.initialize_configuration.inference_config()
           .runtime_config()
           .max_generated_tokens();
   size_t max_output_tokens = config_max_output_tokens > 0
-                                 ? config_max_output_tokens
+                                 ? static_cast<size_t>(config_max_output_tokens)
                                  : kMaxOutputTokens;
   float temperature = 1.0 + inference_runtime_config.temperature_diff();
 
@@ -178,9 +178,10 @@ std::vector<absl::StatusOr<std::string>> InferenceModel::GenerateBatchGemmaCpp(
   gcpp::Allocator* allocator_ptr = &gemma_model.ctx->allocator;
   TimingInfo timing_info;
 
-  size_t max_batch_size = inference_runtime_config.max_batch_size() > 0
-                              ? inference_runtime_config.max_batch_size()
-                              : kDefaultMaxBatchSize;
+  size_t max_batch_size =
+      inference_runtime_config.max_batch_size() > 0
+          ? static_cast<size_t>(inference_runtime_config.max_batch_size())
+          : kDefaultMaxBatchSize;
 
   // Process prompts in batches of max_batch_size (see GenerateBatch() in
   // inference_model.h).
@@ -299,12 +300,12 @@ absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(
   llama_context_params ctx_params = llama_context_default_params();
 
   // Set the max_output_tokens to the value in the RuntimeConfig if provided.
-  size_t config_max_output_tokens =
+  int32_t config_max_output_tokens =
       inference_configuration_.initialize_configuration.inference_config()
           .runtime_config()
           .max_generated_tokens();
   size_t max_output_tokens = config_max_output_tokens > 0
-                                 ? config_max_output_tokens
+                                 ? static_cast<size_t>(config_max_output_tokens)
                                  : kMaxOutputTokens;
   // Set the context size to accommodate the prompt and generated tokens.
   ctx_params.n_ctx = num_prompt_tokens + max_output_tokens;
