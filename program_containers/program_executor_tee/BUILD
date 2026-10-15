@@ -280,6 +280,7 @@ cc_library(
     deps = [
         ":confidential_transform_server",
         "@com_google_absl//absl/strings",
+        "@oak//cc/crypto:signing_key",
         "@pybind11",
     ],
 )

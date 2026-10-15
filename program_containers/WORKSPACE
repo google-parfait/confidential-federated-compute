@@ -19,21 +19,21 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=git_repository,http_archive,local_repository
 http_archive(
     name = "bazel_features",
-    sha256 = "4fd9922d464686820ffd8fcefa28ccffa147f7cdc6b6ac0d8b07fde565c65d66",
-    strip_prefix = "bazel_features-1.25.0",
-    url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.25.0/bazel_features-v1.25.0.tar.gz",
+    sha256 = "c26b4e69cf02fea24511a108d158188b9d8174426311aac59ce803a78d107648",
+    strip_prefix = "bazel_features-1.43.0",
+    url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.43.0/bazel_features-v1.43.0.tar.gz",
 )
 
-# Override bazel_skylib version from XLA — rules_python 1.6.1 needs 1.7+.
+# Override bazel_skylib version from XLA — rules_cc 0.2.18+ needs 1.8+.
 http_archive(
     name = "bazel_skylib",
-    sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
+    integrity = "sha256-O1tJAGGB9fj/Ym743c6qlem7itKU97XXsR6p992vjFk=",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
-        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.9.0/bazel-skylib-1.9.0.tar.gz",
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.9.0/bazel-skylib-1.9.0.tar.gz",
     ],
 )
 
@@ -87,11 +87,9 @@ http_archive(
     urls = ["https://github.com/google/re2/releases/download/2024-07-02/re2-2024-07-02.tar.gz"],
 )
 
-http_archive(
+local_repository(
     name = "confidential_federated_compute",
-    sha256 = "b75aa9d95174d847518bd9d1ab82f8f6e82a4d04c986572e442d6a91036843f8",
-    strip_prefix = "confidential-federated-compute-bd25e189a21dacae6d9a643f1b0be824f0448fca",
-    url = "https://github.com/google-parfait/confidential-federated-compute/archive/bd25e189a21dacae6d9a643f1b0be824f0448fca.tar.gz",
+    path = "..",
 )
 
 http_archive(
@@ -113,11 +111,8 @@ http_archive(
 http_archive(
     name = "federated_compute",
     integrity = "sha256-P4Tni8dgFv4cqnmLyxQg2owQ/g6rm0mRu6uovC5GgD8=",
-    patch_cmds = [
-        "sed -i 's|//third_party/libcppbor|@libcppbor|g' fcp/confidentialcompute/BUILD",
-    ],
     patches = [
-        "//third_party/federated_compute:libcppbor.patch",
+        "@confidential_federated_compute//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",
@@ -187,7 +182,7 @@ git_repository(
     name = "libcppbor",
     build_file = "@federated_compute//third_party:libcppbor.BUILD.bzl",
     commit = "20d2be8672d24bfb441d075f82cc317d17d601f8",
-    patches = ["//third_party/libcppbor:libcppbor.patch"],
+    patches = ["@federated_compute//fcp/patches:libcppbor.patch"],
     remote = "https://android.googlesource.com/platform/external/libcppbor",
 )
 
@@ -255,9 +250,9 @@ http_archive(
 
 http_archive(
     name = "rules_cc",
-    sha256 = "abc605dd850f813bb37004b77db20106a19311a96b2da1c92b789da529d28fe1",
-    strip_prefix = "rules_cc-0.0.17",
-    url = "https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz",
+    integrity = "sha256-HeW0dyH84K8N1FOzBxIo/fxEvRgZmCaz8LA7Qjqun2U=",
+    strip_prefix = "rules_cc-0.2.18",
+    url = "https://github.com/bazelbuild/rules_cc/releases/download/0.2.18/rules_cc-0.2.18.tar.gz",
 )
 
 http_archive(
@@ -313,15 +308,18 @@ http_archive(
     name = "sysroot",
     # Build provenance available at https://search.sigstore.dev/?hash=<sha256>.
     # To make this lookup easier, we use `sha256` instead of `integrity`.
-    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 http_archive(
     name = "toolchains_llvm",
-    sha256 = "fded02569617d24551a0ad09c0750dc53a3097237157b828a245681f0ae739f8",
-    strip_prefix = "toolchains_llvm-v1.4.0",
-    url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.4.0/toolchains_llvm-v1.4.0.tar.gz",
+    patches = [
+        "@confidential_federated_compute//third_party/toolchains_llvm:cc_wrapper.patch",
+    ],
+    sha256 = "16a542173a41d29c5e172d7ef907261879bc37e7ba7d12ffe5574303ba36665d",
+    strip_prefix = "toolchains_llvm-v1.11.3",
+    url = "https://github.com/bazel-contrib/toolchains_llvm/releases/download/v1.11.3/toolchains_llvm-v1.11.3.tar.gz",
 )
 
 http_archive(
@@ -365,6 +363,10 @@ stub_repo(
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 
 bazel_features_deps()
+
+load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
+
+compatibility_proxy_repo()
 
 load("@rules_java//java:rules_java_deps.bzl", "rules_java_dependencies")
 
@@ -554,9 +556,7 @@ load("@toolchains_llvm//toolchain:rules.bzl", "llvm_toolchain")
 
 llvm_toolchain(
     name = "llvm_toolchain",
-    # Use LLVM version 14 as version 13 has a bug which causes asan to fail:
-    # https://github.com/llvm/llvm-project/issues/51620
-    llvm_version = "14.0.0",
+    llvm_version = "19.1.0",
     stdlib = {"linux-x86_64": "stdc++"},
     sysroot = {"linux-x86_64": "@sysroot"},
 )
