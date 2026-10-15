@@ -183,7 +183,6 @@ class BatchedInferenceServerTest : public ::testing::Test {
     auto init_stream = stub_->StreamInitialize(&init_context, &init_response);
 
     StreamInitializeRequest init_request;
-    init_request.mutable_initialize_request()->set_max_num_sessions(1);
     *init_request.mutable_initialize_request()->mutable_protected_response() =
         encrypted_handshake;
 
@@ -578,7 +577,6 @@ TEST_F(BatchedInferenceServerTest, SingleWriteWithCommitPrivateLogger) {
   InitializeResponse init_response;
   auto init_stream = stub_->StreamInitialize(&init_context, &init_response);
   StreamInitializeRequest init_request;
-  init_request.mutable_initialize_request()->set_max_num_sessions(1);
   *init_request.mutable_initialize_request()->mutable_protected_response() =
       encrypted_handshake;
 

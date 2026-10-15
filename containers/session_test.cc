@@ -13,10 +13,7 @@
 // limitations under the License.
 #include "containers/session.h"
 
-#include <thread>
-
 #include "absl/status/status_matchers.h"
-#include "absl/time/clock.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
@@ -44,33 +41,6 @@ MATCHER_P2(RpcStatusIs, expected_code, message_matcher, "") {
             Property(&google::rpc::Status::message, message_matcher)),
       arg, result_listener);
 }
-TEST(SessionTest, AddSession) {
-  SessionTracker session_tracker(1);
-  EXPECT_THAT(session_tracker.AddSession(), IsOk());
-}
-
-TEST(SessionTest, MaximumSessionsReachedAddSession) {
-  SessionTracker session_tracker(1);
-  EXPECT_THAT(session_tracker.AddSession(), IsOk());
-  EXPECT_THAT(session_tracker.AddSession(),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
-}
-
-TEST(SessionTest, MaximumSessionsReachedCanAddSessionAfterRemoveSession) {
-  SessionTracker session_tracker(1);
-  EXPECT_THAT(session_tracker.AddSession(), IsOk());
-  EXPECT_THAT(session_tracker.AddSession(),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
-  EXPECT_THAT(session_tracker.RemoveSession(), IsOk());
-  EXPECT_THAT(session_tracker.AddSession(), IsOk());
-}
-
-TEST(SessionTest, RemoveSessionWithoutAddSessionFails) {
-  SessionTracker session_tracker(1);
-  EXPECT_THAT(session_tracker.RemoveSession(),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
-}
-
 TEST(SessionTest, ErrorToWriteFinishedResponseTest) {
   WriteFinishedResponse response =
       ToWriteFinishedResponse(absl::InvalidArgumentError("invalid arg"));
@@ -144,17 +114,6 @@ TEST(SessionTest, OkToCommitResponseTest) {
                              ElementsAre(
                                  RpcStatusIs(grpc::StatusCode::INVALID_ARGUMENT,
                                              "ignored")))))));
-}
-
-TEST(SessionTest, MaximumSessionsReachedConcurrentAddRemove) {
-  SessionTracker session_tracker(1);
-  EXPECT_THAT(session_tracker.AddSession(), IsOk());
-  std::thread t([&]() {
-    absl::SleepFor(absl::Milliseconds(10));
-    EXPECT_THAT(session_tracker.RemoveSession(), IsOk());
-  });
-  EXPECT_THAT(session_tracker.AddSession(), IsOk());
-  t.join();
 }
 
 TEST(SessionKVTest, Construct) {

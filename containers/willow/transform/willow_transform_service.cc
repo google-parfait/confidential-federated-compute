@@ -53,31 +53,15 @@ grpc::Status WillowTransformService::StreamInitialize(
 grpc::Status WillowTransformService::Session(
     ServerContext* context,
     grpc::ServerReaderWriter<SessionResponse, SessionRequest>* stream) {
-  SessionTracker* session_tracker;
   {
     absl::MutexLock l(&mutex_);
-    if (session_tracker_ == std::nullopt) {
+    if (!IsInitialized()) {
       return ToGrpcStatus(absl::FailedPreconditionError(
           "StreamInitialize must be called before Session."));
     }
-
-    // Since session_tracker_ is set once in Initialize and never
-    // modified, and the underlying object is threadsafe, it is safe to store a
-    // local pointer to it and access the object without a lock after we check
-    // under the mutex that a value has been set for the std::optional wrapper.
-    session_tracker = &*session_tracker_;
-  }
-  if (absl::Status session_status = session_tracker->AddSession();
-      !session_status.ok()) {
-    return ToGrpcStatus(session_status);
   }
   SessionStream session_stream(stream);
-  grpc::Status status = ToGrpcStatus(SessionImpl(&session_stream));
-  absl::Status remove_session = session_tracker->RemoveSession();
-  if (!remove_session.ok()) {
-    return ToGrpcStatus(remove_session);
-  }
-  return status;
+  return ToGrpcStatus(SessionImpl(&session_stream));
 }
 
 absl::Status WillowTransformService::StreamInitializeImpl(
@@ -86,7 +70,6 @@ absl::Status WillowTransformService::StreamInitializeImpl(
     fcp::confidentialcompute::InitializeResponse* response) {
   StreamInitializeRequest request;
   std::optional<google::protobuf::Any> configuration;
-  uint32_t max_num_sessions;
   while (reader->Read(&request)) {
     switch (request.kind_case()) {
       case StreamInitializeRequest::kInitializeRequest: {
@@ -96,7 +79,6 @@ absl::Status WillowTransformService::StreamInitializeImpl(
               "StreamInitializeRequests: received more than one "
               "InitializeRequest.");
         }
-        max_num_sessions = request.initialize_request().max_num_sessions();
         configuration.emplace(std::move(
             *request.mutable_initialize_request()->mutable_configuration()));
         break;
@@ -125,7 +107,7 @@ absl::Status WillowTransformService::StreamInitializeImpl(
           "StreamInitialize can only be called once.");
     }
     ABSL_RETURN_IF_ERROR(InitializeTransform(configuration.value()));
-    session_tracker_.emplace(max_num_sessions);
+    initialized_ = true;
   }
 
   return absl::OkStatus();

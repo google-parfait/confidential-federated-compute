@@ -97,7 +97,6 @@ class TestConcatServerTest : public Test {
     grpc::ClientContext context;
     InitializeRequest request;
     InitializeResponse response;
-    request.set_max_num_sessions(8);
 
     auto public_private_key_pair = crypto_test_utils::GenerateKeyPair(key_id_);
     public_key_ = public_private_key_pair.first;

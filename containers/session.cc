@@ -35,35 +35,6 @@ using ::fcp::confidentialcompute::SessionResponse;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 
-constexpr absl::Duration kAddSessionPreconditionTimeout = absl::Seconds(1);
-
-absl::Status SessionTracker::AddSession() {
-  absl::MutexLock l(&mutex_);
-  // Wait for the nonzero number of available sessions in case
-  // there is a race between creating a new session and destroying
-  // an old session.
-  mutex_.AwaitWithTimeout(
-      absl::Condition(
-          +[](int* available) { return *available > 0; }, &available_sessions_),
-      kAddSessionPreconditionTimeout);
-  if (available_sessions_ > 0) {
-    available_sessions_--;
-    return absl::OkStatus();
-  }
-  return absl::FailedPreconditionError(
-      "SessionTracker: already at the maximum number of sessions.");
-}
-
-absl::Status SessionTracker::RemoveSession() {
-  absl::MutexLock l(&mutex_);
-  if (available_sessions_ >= max_num_sessions_) {
-    return absl::FailedPreconditionError(
-        "SessionTracker: no sessions to remove.");
-  }
-  available_sessions_++;
-  return absl::OkStatus();
-}
-
 WriteFinishedResponse ToWriteFinishedResponse(absl::Status status,
                                               long committed_size_bytes) {
   if (!status.ok()) {

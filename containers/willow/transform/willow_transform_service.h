@@ -64,13 +64,13 @@ class WillowTransformService final
   CreateSession();
 
   bool IsInitialized() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
-    return session_tracker_.has_value();
+    return initialized_;
   }
 
-  // The mutex is used to protect the session_tracker_, to ensure it is
-  // initialized, but SessionTracker is itself threadsafe.
+  // The mutex is used to protect initialized_, to ensure the transform is
+  // initialized exactly once before any sessions are started.
   mutable absl::Mutex mutex_;
-  std::optional<SessionTracker> session_tracker_ ABSL_GUARDED_BY(mutex_);
+  bool initialized_ ABSL_GUARDED_BY(mutex_) = false;
 
   // Aggregation configuration is initialized during StreamInitializeTransform.
   secure_aggregation::willow::AggregationConfigProto aggregation_config_;

@@ -373,7 +373,6 @@ TEST_F(FnConfidentialTransformTest, SessionCallsCreateFn) {
 
   grpc::ClientContext context;
   InitializeRequest request;
-  request.set_max_num_sessions(1);
   InitializeResponse response;
 
   absl::StatusOr<EncryptedRequest> encrypted_request =

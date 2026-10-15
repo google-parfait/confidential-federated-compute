@@ -158,8 +158,6 @@ using ::testing::SizeIs;
 using ::testing::Test;
 using ::testing::UnorderedElementsAre;
 
-inline constexpr int kMaxNumSessions = 8;
-
 TableSchema CreateTableSchema(std::string name, std::string create_table_sql,
                               std::vector<ColumnSchema> columns) {
   TableSchema schema;
@@ -455,7 +453,6 @@ class FedSqlServerTest : public Test {
           std::nullopt) {
     InitializeRequest request;
     request.mutable_configuration()->PackFrom(init_config);
-    request.set_max_num_sessions(kMaxNumSessions);
 
     auto public_private_key_pair =
         key_pair.has_value() ? *key_pair
@@ -1858,39 +1855,6 @@ TEST_F(FedSqlServerTest, ConfigureInvalidTableSchema) {
   EXPECT_THAT(FromGrpcStatus(stream->Finish()),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("SQL query input schema has no columns")));
-}
-
-TEST_F(FedSqlServerTest, SessionRejectsMoreThanMaximumNumSessions) {
-  InitializeTransform();
-
-  std::vector<std::unique_ptr<
-      grpc::ClientReaderWriter<SessionRequest, SessionResponse>>>
-      streams;
-  std::vector<std::unique_ptr<grpc::ClientContext>> contexts;
-  for (int i = 0; i < kMaxNumSessions; i++) {
-    std::unique_ptr<grpc::ClientContext> session_context =
-        std::make_unique<grpc::ClientContext>();
-    auto stream = ConfigureDefaultSession(session_context.get());
-
-    // Keep the context and stream so they don't go out of scope and end the
-    // session.
-    contexts.emplace_back(std::move(session_context));
-    streams.emplace_back(std::move(stream));
-  }
-
-  grpc::ClientContext rejected_context;
-  SessionRequest rejected_request;
-  SessionResponse rejected_response;
-  rejected_request.mutable_configure()->set_chunk_size(1000);
-  rejected_request.mutable_configure()->mutable_configuration()->PackFrom(
-      DefaultSqlQuery());
-
-  std::unique_ptr<::grpc::ClientReaderWriter<SessionRequest, SessionResponse>>
-      stream = stub_->Session(&rejected_context);
-  ASSERT_TRUE(stream->Write(rejected_request));
-  ASSERT_FALSE(stream->Read(&rejected_response));
-  EXPECT_THAT(FromGrpcStatus(stream->Finish()),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
