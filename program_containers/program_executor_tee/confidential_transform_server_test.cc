@@ -87,7 +87,6 @@ TYPED_TEST(ProgramExecutorTeeTest,
   InitializeResponse response;
 
   InitializeRequest request;
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";
@@ -119,7 +118,6 @@ TYPED_TEST(ProgramExecutorTeeTest,
   InitializeRequest request;
   request.mutable_configuration()->PackFrom(
       CreateProgramExecutorTeeInitializeConfig("my_program"));
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";
@@ -148,7 +146,6 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsMismatchingProgram) {
   InitializeRequest request;
   request.mutable_configuration()->PackFrom(
       CreateProgramExecutorTeeInitializeConfig("my_program"));
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";
@@ -182,7 +179,6 @@ TYPED_TEST(ProgramExecutorTeeTest,
   InitializeRequest request;
   request.mutable_configuration()->PackFrom(
       CreateProgramExecutorTeeInitializeConfig("my_program"));
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";
@@ -218,7 +214,6 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsDuplicateBlobIds) {
   request.mutable_configuration()->PackFrom(
       CreateProgramExecutorTeeInitializeConfig(
           "my_program", /*blob_ids=*/{"blob_1", "blob_2", "blob_1"}));
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";
@@ -250,7 +245,6 @@ TYPED_TEST(ProgramExecutorTeeTest, StreamInitializeWithKmsExhaustedBudget) {
   InitializeRequest request;
   request.mutable_configuration()->PackFrom(
       CreateProgramExecutorTeeInitializeConfig("my_program"));
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";
@@ -290,7 +284,6 @@ TYPED_TEST(ProgramExecutorTeeTest,
           "my_program", /*blob_ids=*/{}, /*outgoing_server_address=*/"",
           /*worker_reference_values_path=*/
           "program_executor_tee/testdata/test_reference_values.txtpb"));
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";
@@ -321,7 +314,6 @@ TYPED_TEST(ProgramExecutorTeeTest, ValidStreamInitializeAndConfigureWithKms) {
           "my_program", /*blob_ids=*/{}, /*outgoing_server_address=*/"",
           /*worker_reference_values_path=*/
           "program_executor_tee/testdata/test_reference_values.txtpb"));
-  request.set_max_num_sessions(kMaxNumSessions);
 
   AuthorizeConfidentialTransformResponse::ProtectedResponse protected_response;
   *protected_response.add_result_encryption_keys() = "recovery_info_key";

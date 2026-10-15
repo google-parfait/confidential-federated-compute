@@ -61,8 +61,6 @@ using ::oak::crypto::EncryptionKeyProvider;
 using ::testing::NiceMock;
 using ::testing::Test;
 
-inline constexpr int kMaxNumSessions = 8;
-
 class PythonEnvironment : public ::testing::Environment {
  public:
   // Called once before the very first test case starts.
@@ -231,7 +229,6 @@ class ProgramExecutorTeeSessionTest : public ProgramExecutorTeeTest<T> {
     StreamInitializeRequest stream_initialize_request;
     InitializeRequest* initialize_request =
         stream_initialize_request.mutable_initialize_request();
-    initialize_request->set_max_num_sessions(kMaxNumSessions);
     initialize_request->mutable_configuration()->PackFrom(config);
     AuthorizeConfidentialTransformResponse::ProtectedResponse
         protected_response;
