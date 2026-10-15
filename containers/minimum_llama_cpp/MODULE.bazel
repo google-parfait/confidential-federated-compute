@@ -21,11 +21,39 @@ module(
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 bazel_dep(name = "rules_cc", version = "0.1.1")
-bazel_dep(name = "toolchains_llvm", version = "1.4.0")
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
 bazel_dep(name = "rules_python", version = "1.4.1")
 bazel_dep(name = "rules_oci", version = "2.0.0")
 bazel_dep(name = "rules_distroless", version = "0.5.1")
 bazel_dep(name = "rules_pkg", version = "1.1.0")
+bazel_dep(name = "confidential-federated-compute")
+local_path_override(
+    module_name = "confidential-federated-compute",
+    path = "../..",
+)
+
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-P4Tni8dgFv4cqnmLyxQg2owQ/g6rm0mRu6uovC5GgD8=",
+    patches = ["@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch"],
+    strip_prefix = "federated-compute-bb01e11345332e41310de70d2672b37eedd8b285",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/bb01e11345332e41310de70d2672b37eedd8b285.tar.gz"],
+)
+
+bazel_dep(name = "oak")
+archive_override(
+    module_name = "oak",
+    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
+    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
+    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
+)
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
+
 bazel_dep(name = "rules_cuda")
 archive_override(
     module_name = "rules_cuda",
@@ -44,8 +72,8 @@ archive_override(
 
 http_archive(
     name = "sysroot",
-    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 # Set up python toolchain

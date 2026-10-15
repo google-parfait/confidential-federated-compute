@@ -47,7 +47,7 @@ bazel_dep(name = "rules_rust_bindgen", version = "0.70.0")
 bazel_dep(name = "rules_rust_prost")
 bazel_dep(name = "secure_aggregation", version = "0.0.0")
 bazel_dep(name = "shell-encryption", version = "0.0.0")
-bazel_dep(name = "toolchains_llvm", version = "1.6.0")
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
 # go/keep-sorted end
 
 fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
@@ -139,6 +139,11 @@ archive_override(
         "https://github.com/google/shell-encryption/archive/6b521659f4bb37d88ccb981f30319c29c373c06f.zip",
     ],
 )
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
 # go/keep-sorted end
 
 # Dependencies that do not use bzlmod yet.
@@ -155,8 +160,8 @@ http_archive(
 
 http_archive(
     name = "sysroot",
-    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 http_archive(
@@ -207,7 +212,7 @@ use_repo(aliased_crates_repository, "oak_crates_index")
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
 llvm.toolchain(
     name = "llvm_toolchain",
-    llvm_version = "14.0.0",
+    llvm_version = "19.1.0",
 )
 llvm.sysroot(
     name = "llvm_toolchain",

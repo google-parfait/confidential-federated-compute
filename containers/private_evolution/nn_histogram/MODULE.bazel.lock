@@ -211,7 +211,6 @@
     "https://bcr.bazel.build/modules/grpc/1.80.0/MODULE.bazel": "35ef253a0a31055c8a2495640516224647545b51673b0ccb956b116ee92ef554",
     "https://bcr.bazel.build/modules/grpc/1.80.0/source.json": "55bf4cdcf278a450185ff93bef843a0d7db0a83d0b9761d9c1dee91faa9cdf46",
     "https://bcr.bazel.build/modules/helly25_bzl/0.3.1/MODULE.bazel": "3a4be20f6fc13be32ad44643b8252ef5af09eee936f1d943cd4fd7867fa92826",
-    "https://bcr.bazel.build/modules/helly25_bzl/0.3.1/source.json": "b129ab1828492de2c163785bbeb4065c166de52d932524b4317beb5b7f917994",
     "https://bcr.bazel.build/modules/highwayhash/0.0.0-20240305-5ad3bf8/MODULE.bazel": "5c7f29d5bd70feff14b0f65b39584957e18e4a8d555e5a29a4c36019afbb44b9",
     "https://bcr.bazel.build/modules/highwayhash/0.0.0-20240305-5ad3bf8/source.json": "211c0937ef5f537da6c3c135d12e60927c71b380642e207e4a02b86d29c55e85",
     "https://bcr.bazel.build/modules/jq.bzl/0.1.0/MODULE.bazel": "2ce69b1af49952cd4121a9c3055faa679e748ce774c7f1fda9657f936cae902f",
@@ -228,6 +227,8 @@
     "https://bcr.bazel.build/modules/lz4/1.9.4/source.json": "233f0bdfc21f254e3dda14683ddc487ca68c6a3a83b7d5db904c503f85bd089b",
     "https://bcr.bazel.build/modules/mbedtls/3.6.0/MODULE.bazel": "8e380e4698107c5f8766264d4df92e36766248447858db28187151d884995a09",
     "https://bcr.bazel.build/modules/mbedtls/3.6.0/source.json": "1dbe7eb5258050afcc3806b9d43050f71c6f539ce0175535c670df606790b30c",
+    "https://bcr.bazel.build/modules/mboworks_bzl/0.5.1/MODULE.bazel": "20c921aded4f4e00a6128dad47a843371c196ba8987474c11c8ba7b9da8c16f1",
+    "https://bcr.bazel.build/modules/mboworks_bzl/0.5.1/source.json": "3d9086bb203475113a16afb0ca0c9b97fdb37fc6e5a62b604b60ffc2450dc8c5",
     "https://bcr.bazel.build/modules/nlohmann_json/3.11.3/MODULE.bazel": "87023db2f55fc3a9949c7b08dc711fae4d4be339a80a99d04453c4bb3998eefc",
     "https://bcr.bazel.build/modules/nlohmann_json/3.11.3/source.json": "296c63a90c6813e53b3812d24245711981fc7e563d98fe15625f55181494488a",
     "https://bcr.bazel.build/modules/nlohmann_json/3.6.1/MODULE.bazel": "6f7b417dcc794d9add9e556673ad25cb3ba835224290f4f848f8e2db1e1fca74",
@@ -528,8 +529,9 @@
     "https://bcr.bazel.build/modules/tar.bzl/0.6.0/source.json": "4a620381df075a16cb3a7ed57bd1d05f7480222394c64a20fa51bdb636fda658",
     "https://bcr.bazel.build/modules/tink_cc/2.7.0/MODULE.bazel": "bcc075eadcb08b1998b1098ab68b8197506566ed810dc02718e8817d4890c426",
     "https://bcr.bazel.build/modules/tink_cc/2.7.0/source.json": "80e935a1aa2453a086aec21583124911d34774c315b4adf94d260031468c86ba",
+    "https://bcr.bazel.build/modules/toolchains_llvm/1.11.3/MODULE.bazel": "5cfe122b9686b8a3476e23496d10c674e69ca0d885209b1ba0d2d1d4c418ec29",
+    "https://bcr.bazel.build/modules/toolchains_llvm/1.11.3/source.json": "d8586e8e1e5147ec8dc24dd461f6004943ff4781f085953587c3fa8803073a95",
     "https://bcr.bazel.build/modules/toolchains_llvm/1.6.0/MODULE.bazel": "39603859cafb1c6830160fcd6370552e836790e6abb2bfb8d13bff53c0c10a64",
-    "https://bcr.bazel.build/modules/toolchains_llvm/1.6.0/source.json": "6bd3ef95a288dd2bb1582eca332af850c9a5428a23bb92cb1c57c2dfe6cb7369",
     "https://bcr.bazel.build/modules/upb/0.0.0-20211020-160625a/MODULE.bazel": "6cced416be2dc5b9c05efd5b997049ba795e5e4e6fafbe1624f4587767638928",
     "https://bcr.bazel.build/modules/upb/0.0.0-20220923-a547704/MODULE.bazel": "7298990c00040a0e2f121f6c32544bab27d4452f80d9ce51349b1a28f3005c43",
     "https://bcr.bazel.build/modules/upb/0.0.0-20230516-61a97ef/MODULE.bazel": "c0df5e35ad55e264160417fd0875932ee3c9dda63d9fccace35ac62f45e1b6f9",
@@ -22158,6 +22160,29 @@
             "rules_rust+"
           ]
         ]
+      }
+    },
+    "@@toolchains_llvm+//toolchain/extensions:distributions.bzl%llvm_distributions": {
+      "general": {
+        "bzlTransitiveDigest": "RfYsFLwRh0rVY8ReiYgbOEyr84zuBs7mbcHq3dPY3jI=",
+        "usagesDigest": "iNUgtvOL6OSJFHS2TVczU6k42DdU1giRPmdNbCYXTOw=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "llvm_distributions_data": {
+            "repoRuleId": "@@toolchains_llvm+//toolchain/internal:distributions_repo.bzl%llvm_distributions_repo",
+            "attributes": {
+              "srcs": [
+                "@@toolchains_llvm+//toolchain/distributions:pre_github.jsonc",
+                "@@toolchains_llvm+//toolchain/distributions:github_legacy.jsonc",
+                "@@toolchains_llvm+//toolchain/distributions:github.jsonc",
+                "@@toolchains_llvm+//toolchain/distributions:extra.jsonc"
+              ]
+            }
+          }
+        },
+        "recordedRepoMappingEntries": []
       }
     },
     "@@yq.bzl+//yq:extensions.bzl%yq": {

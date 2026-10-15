@@ -20,28 +20,39 @@ module(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-bazel_dep(name = "protobuf", version = "27.0", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.1.1")
-bazel_dep(name = "rules_python", version = "1.4.1")
-bazel_dep(name = "toolchains_llvm", version = "1.4.0")
-bazel_dep(name = "rules_oci", version = "2.0.0")
-bazel_dep(name = "rules_distroless", version = "0.5.1")
-bazel_dep(name = "rules_pkg", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "rules_python", version = "2.0.2")
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
+bazel_dep(name = "rules_oci", version = "2.2.7")
+bazel_dep(name = "rules_distroless", version = "0.6.1")
+bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_proto", version = "7.1.0")
-bazel_dep(name = "grpc")
-archive_override(
-    module_name = "grpc",
-    integrity = "sha256-jKr9abeMUUQQliq9MrF5gcyXz3LwmudjOVu1e4+goyA=",
-    strip_prefix = "grpc-1.72.1",
-    url = "https://github.com/grpc/grpc/archive/refs/tags/v1.72.1.tar.gz",
+bazel_dep(name = "confidential-federated-compute")
+local_path_override(
+    module_name = "confidential-federated-compute",
+    path = "../..",
 )
 
-bazel_dep(name = "abseil-cpp")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-P4Tni8dgFv4cqnmLyxQg2owQ/g6rm0mRu6uovC5GgD8=",
+    patches = ["@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch"],
+    strip_prefix = "federated-compute-bb01e11345332e41310de70d2672b37eedd8b285",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/bb01e11345332e41310de70d2672b37eedd8b285.tar.gz"],
+)
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
+
+bazel_dep(name = "grpc", version = "1.80.0")
+bazel_dep(name = "abseil-cpp", version = "20260526.0")
+single_version_override(
     module_name = "abseil-cpp",
-    integrity = "sha256-O9tkKxAiIdzop0yHuPEcGZ/l8KXxfGGpSc6wb8QpLWo=",
-    strip_prefix = "abseil-cpp-91cfa153fcb809672068b767fac7b0ac6ab321c2",
-    url = "https://github.com/abseil/abseil-cpp/archive/91cfa153fcb809672068b767fac7b0ac6ab321c2.zip",
+    version = "20260526.0",
 )
 
 bazel_dep(name = "oak")
@@ -51,6 +62,9 @@ archive_override(
     strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
     urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
+
+oak_crates = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
+use_repo(oak_crates, "oak_crates_index")
 
 bazel_dep(name = "rules_cuda")
 archive_override(
@@ -62,8 +76,8 @@ archive_override(
 
 http_archive(
     name = "sysroot",
-    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 # Set up python toolchain
@@ -151,4 +165,4 @@ oci.pull(
     image = "gcr.io/distroless/cc-debian12",
     platforms = ["linux/amd64"],
 )
-use_repo(oci, "distroless_cc_debian12_base")
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")

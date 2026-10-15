@@ -41,7 +41,7 @@ bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_proto", version = "7.1.0")
 bazel_dep(name = "rules_python", version = "2.0.2")
-bazel_dep(name = "toolchains_llvm", version = "1.6.0")
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
 # go/keep-sorted end
 
 # Module overrides
@@ -73,6 +73,11 @@ archive_override(
     strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
     urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
 # go/keep-sorted end
 
 internal_configure = use_extension("@pybind11_bazel//:internal_configure.bzl", "internal_configure_extension")
@@ -83,8 +88,8 @@ use_repo(fcp_deps, "bazel_toolchains", "libcppbor", "org_tensorflow_federated")
 
 http_archive(
     name = "sysroot",
-    sha256 = "86ccf9ea2360237ecad01633a86d566ed16e137daf986320ef91ec295ea5f679",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
@@ -98,7 +103,7 @@ python.toolchain(
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
     name = "llvm_toolchain",
-    llvm_version = "14.0.0",
+    llvm_version = "19.1.0",
 )
 llvm.sysroot(
     name = "llvm_toolchain",
