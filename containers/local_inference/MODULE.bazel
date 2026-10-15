@@ -33,7 +33,6 @@ bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "boringssl", version = "0.20260413.0")
 bazel_dep(name = "confidential-federated-compute")
-bazel_dep(name = "confidential-federated-compute-sysroot")
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 bazel_dep(name = "gemma", version = "0.0.1")
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2", repo_name = "com_google_googletest")
@@ -52,19 +51,11 @@ bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_python", version = "2.0.2")
 bazel_dep(name = "rules_rust", version = "0.70.0")
-bazel_dep(name = "toolchains_llvm", version = "1.6.0")
+bazel_dep(name = "toolchains_llvm", version = "1.8.0")
 
 local_path_override(
     module_name = "confidential-federated-compute",
     path = "../..",
-)
-
-archive_override(
-    module_name = "confidential-federated-compute-sysroot",
-    # Build provenance available at https://search.sigstore.dev/?hash=<sha256>,
-    # where <sha256> is base16 encoded, not base64 as required by `integrity`.
-    integrity = "sha256-hsz56iNgI37K0BYzqG1WbtFuE32vmGMg75HsKV6l9nk=",
-    urls = ["https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260311/sysroot.tar.xz"],
 )
 
 archive_override(
@@ -107,6 +98,17 @@ register_toolchains("@python_3_13//:all")
 llama_cpp_deps = use_extension("@confidential-federated-compute//containers/common/local_inference:llama_cpp_deps.bzl", "llama_cpp_deps")
 use_repo(llama_cpp_deps, "llama_cpp")
 
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# This sysroot bundles libxml2 and libicu72, which the LLVM 19 toolchain
+# binaries (e.g. ld.lld) load at runtime, but which aren't available on all
+# hosts we build on (e.g. the remote build execution image).
+http_archive(
+    name = "sysroot",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
+)
+
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(
     name = "llvm_toolchain",
@@ -115,7 +117,7 @@ llvm.toolchain(
 )
 llvm.sysroot(
     name = "llvm_toolchain",
-    label = "@confidential-federated-compute-sysroot//:sysroot",
+    label = "@sysroot",
     targets = ["linux-x86_64"],
 )
 use_repo(llvm, "llvm_toolchain")
@@ -137,3 +139,11 @@ use_repo(fcp_deps, "bazel_toolchains", "org_tensorflow_federated")
 # Rust crates.
 oak_crates = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
 use_repo(oak_crates, "oak_crates_index")
+
+# Makes the LLVM toolchain binaries load libraries that are missing on the host
+# (like libxml2) from the sysroot, while still preferring the host's own
+# libraries (like libc and libstdc++).
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
