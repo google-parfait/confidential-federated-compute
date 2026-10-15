@@ -81,20 +81,13 @@ class InputTest : public ::testing::Test {
 };
 
 TEST_F(InputTest, CreateFromTensors) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
-  ASSERT_THAT(input, IsOk());
-}
-
-TEST_F(InputTest, CreateFromTensorsWithPrivacyId) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", "the_privacy_id");
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
 }
 
 TEST_F(InputTest, CreateFromTensorsFailsWithNoColumns) {
-  absl::StatusOr<Input> input =
-      Input::CreateFromTensors({}, "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input = Input::CreateFromTensors({}, "key-id");
   EXPECT_THAT(input.status(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      "No columns provided."));
@@ -104,8 +97,8 @@ TEST_F(InputTest, CreateFromTensorsFailsWithNoRows) {
   contents_.clear();
   contents_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({}),
                                       CreateTestData<int64_t>({1}), "col1"));
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   EXPECT_THAT(input.status(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      "Column has no rows."));
@@ -115,8 +108,8 @@ TEST_F(InputTest, CreateFromTensorsFailsWithMultiDimensionalRows) {
   contents_.clear();
   contents_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({1, 2}),
                                       CreateTestData<int64_t>({1, 2}), "col1"));
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   EXPECT_THAT(input.status(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      "Column has more than one dimension."));
@@ -126,8 +119,8 @@ TEST_F(InputTest, CreateFromTensorsFailsWithMismatchedRows) {
   contents_.push_back(*Tensor::Create(DataType::DT_INT64, TensorShape({3}),
                                       CreateTestData<int64_t>({1, 2, 3}),
                                       "col3"));
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   EXPECT_THAT(
       input.status(),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
@@ -135,38 +128,23 @@ TEST_F(InputTest, CreateFromTensorsFailsWithMismatchedRows) {
 }
 
 TEST_F(InputTest, GetColumnNames) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   EXPECT_EQ(input->GetColumnNames(),
             std::vector<std::string>({"col1", "col2"}));
 }
 
 TEST_F(InputTest, GetMetadata) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   EXPECT_EQ(input->GetMetadata(), "key-id");
 }
 
-TEST_F(InputTest, GetPrivacyId) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
-  ASSERT_THAT(input, IsOk());
-  EXPECT_FALSE(input->GetPrivacyId().has_value());
-}
-
-TEST_F(InputTest, GetPrivacyIdWithValue) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", "the_privacy_id");
-  ASSERT_THAT(input, IsOk());
-  ASSERT_TRUE(input->GetPrivacyId().has_value());
-  EXPECT_EQ(*input->GetPrivacyId(), "the_privacy_id");
-}
-
 TEST_F(InputTest, GetRow) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<RowView> row = input->GetRow(0);
   ASSERT_THAT(row, IsOk());
@@ -181,15 +159,15 @@ TEST_F(InputTest, GetRow) {
 }
 
 TEST_F(InputTest, GetRowCount) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   EXPECT_EQ(input->GetRowCount(), 2);
 }
 
 TEST_F(InputTest, AddColumn) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
                                 CreateTestData<int64_t>({3, 4}), "col3");
@@ -206,8 +184,8 @@ TEST_F(InputTest, AddColumn) {
 }
 
 TEST_F(InputTest, MoveToTensors) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<std::vector<Tensor>> tensors =
       std::move(*input).MoveToTensors();
@@ -225,8 +203,8 @@ TEST_F(InputTest, MoveToTensors) {
 }
 
 TEST_F(InputTest, AddColumnFailsWithEmptyColumnName) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   Tensor new_col = Tensor({3, 4}, "");
   EXPECT_THAT(input->AddColumn(std::move(new_col)),
@@ -235,8 +213,8 @@ TEST_F(InputTest, AddColumnFailsWithEmptyColumnName) {
 }
 
 TEST_F(InputTest, AddColumnFailsWithDuplicateColumnName) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   Tensor new_col = Tensor({3, 4}, "col1");
   EXPECT_THAT(
@@ -246,8 +224,8 @@ TEST_F(InputTest, AddColumnFailsWithDuplicateColumnName) {
 }
 
 TEST_F(InputTest, AddColumnFailsWithMultiDimensionalColumn) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2, 2}),
                                 CreateTestData<int64_t>({1, 2, 3, 4}), "col3");
@@ -259,8 +237,8 @@ TEST_F(InputTest, AddColumnFailsWithMultiDimensionalColumn) {
 }
 
 TEST_F(InputTest, AddColumnFailsWithMismatchedColumnRows) {
-  absl::StatusOr<Input> input = Input::CreateFromTensors(
-      std::move(contents_), "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromTensors(std::move(contents_), "key-id");
   ASSERT_THAT(input, IsOk());
   Tensor new_col = Tensor({1, 2, 3}, "col3");
   EXPECT_THAT(
@@ -393,21 +371,12 @@ class MessageInputTest : public ::testing::Test {
 
 TEST_F(MessageInputTest, CreateFromMessages) {
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
-  ASSERT_THAT(input, IsOk());
-}
-
-TEST_F(MessageInputTest, CreateFromMessagesWithPrivacyId) {
-  absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      "privacy_id_value");
+      std::move(messages_), std::move(system_columns_), "key-id");
   ASSERT_THAT(input, IsOk());
 }
 
 TEST_F(MessageInputTest, CreateFromMessagesFailsWithNoRows) {
-  absl::StatusOr<Input> input =
-      Input::CreateFromMessages({}, {}, "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input = Input::CreateFromMessages({}, {}, "key-id");
   EXPECT_THAT(input.status(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      "No rows provided."));
@@ -443,8 +412,7 @@ TEST_F(MessageInputTest, CreateFromMessagesFailsWithMismatchedMessageTypes) {
   // Add the new message to contents.
   messages_.push_back(std::move(message2));
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   EXPECT_THAT(input.status(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      "All messages in a table must have the "
@@ -459,8 +427,7 @@ TEST_F(MessageInputTest,
   ASSERT_THAT(t3, IsOk());
   system_columns_.push_back(*std::move(t3));
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   EXPECT_THAT(input.status(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      "System columns must have the same "
@@ -475,8 +442,7 @@ TEST_F(MessageInputTest,
   ASSERT_THAT(t3, IsOk());
   system_columns_.push_back(*std::move(t3));
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   EXPECT_THAT(
       input.status(),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
@@ -485,8 +451,7 @@ TEST_F(MessageInputTest,
 
 TEST_F(MessageInputTest, GetColumnNames) {
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   ASSERT_THAT(input, IsOk());
   EXPECT_EQ(input->GetColumnNames(),
             std::vector<std::string>(
@@ -496,16 +461,14 @@ TEST_F(MessageInputTest, GetColumnNames) {
 
 TEST_F(MessageInputTest, GetRowCount) {
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   ASSERT_THAT(input, IsOk());
   EXPECT_EQ(input->GetRowCount(), 2);
 }
 
 TEST_F(MessageInputTest, AddColumn) {
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   ASSERT_THAT(input, IsOk());
   auto new_col = Tensor::Create(DataType::DT_INT64, TensorShape({2}),
                                 CreateTestData<int64_t>({100, 200}), "new_col");
@@ -526,8 +489,7 @@ TEST_F(MessageInputTest, AddColumn) {
 
 TEST_F(MessageInputTest, GetRow) {
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id",
-      /*privacy_id=*/std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<RowView> row = input->GetRow(0);
   ASSERT_THAT(row, IsOk());
@@ -557,7 +519,7 @@ TEST_F(MessageInputTest, GetRow) {
 
 TEST_F(MessageInputTest, MoveToTensors) {
   absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages_), std::move(system_columns_), "key-id", std::nullopt);
+      std::move(messages_), std::move(system_columns_), "key-id");
   ASSERT_THAT(input, IsOk());
   absl::StatusOr<std::vector<Tensor>> tensors =
       std::move(*input).MoveToTensors();
@@ -662,8 +624,8 @@ TEST(IsolatedInputTest, EnumFieldGeneratesDuplicateStringColumn) {
   messages.push_back(std::move(message));
   messages.push_back(std::move(message2));
 
-  absl::StatusOr<Input> input = Input::CreateFromMessages(
-      std::move(messages), {}, "key-id", /*privacy_id=*/std::nullopt);
+  absl::StatusOr<Input> input =
+      Input::CreateFromMessages(std::move(messages), {}, "key-id");
   ASSERT_THAT(input, IsOk());
 
   EXPECT_EQ(input->GetColumnNames(),
@@ -690,7 +652,7 @@ class FakeMessageFactory : public MessageFactory {
   }
 };
 
-TEST(CreateFromMessageCheckpointTest, SuccessWithoutPrivacyId) {
+TEST(CreateFromMessageCheckpointTest, Success) {
   FakeMessageFactory factory;
 
   std::string query_name = "my_query";
@@ -715,10 +677,9 @@ TEST(CreateFromMessageCheckpointTest, SuccessWithoutPrivacyId) {
 
   EXPECT_THAT(input_result, IsOk());
   EXPECT_EQ(input_result->GetRowCount(), 1);
-  EXPECT_FALSE(input_result->GetPrivacyId().has_value());
 }
 
-TEST(CreateFromMessageCheckpointTest, SuccessWithPrivacyId) {
+TEST(CreateFromMessageCheckpointTest, IgnoresPrivacyIdTensor) {
   FakeMessageFactory factory;
 
   std::string query_name = "my_query";
@@ -741,8 +702,6 @@ TEST(CreateFromMessageCheckpointTest, SuccessWithPrivacyId) {
 
   ASSERT_THAT(input_result, IsOk());
   EXPECT_EQ(input_result->GetRowCount(), 1);
-  ASSERT_TRUE(input_result->GetPrivacyId().has_value());
-  EXPECT_EQ(*input_result->GetPrivacyId(), "the_privacy_id");
 }
 
 TEST(CreateFromMessageCheckpointTest, MissingEntryTensorFails) {

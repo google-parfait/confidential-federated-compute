@@ -69,7 +69,6 @@ absl::Status DuplicateColumnsForMultipleRows(
   }
 
   std::string metadata = std::string(input.GetMetadata());
-  std::optional<std::string> original_privacy_id = input.GetPrivacyId();
 
   ABSL_ASSIGN_OR_RETURN(std::vector<Tensor> original_columns,
                         std::move(input).MoveToTensors());
@@ -84,8 +83,7 @@ absl::Status DuplicateColumnsForMultipleRows(
 
   ABSL_ASSIGN_OR_RETURN(
       Input new_input,
-      Input::CreateFromTensors(std::move(final_columns), std::move(metadata),
-                               std::move(original_privacy_id)));
+      Input::CreateFromTensors(std::move(final_columns), std::move(metadata)));
   input = std::move(new_input);
   return absl::OkStatus();
 }

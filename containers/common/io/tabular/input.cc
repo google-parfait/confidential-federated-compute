@@ -193,15 +193,11 @@ Input::TensorContents::TensorContents(std::vector<Tensor> contents)
   }
 }
 
-Input::Input(ContentsVariant contents, std::string metadata,
-             std::optional<std::string> privacy_id)
-    : contents_(std::move(contents)),
-      metadata_(std::move(metadata)),
-      privacy_id_(std::move(privacy_id)) {}
+Input::Input(ContentsVariant contents, std::string metadata)
+    : contents_(std::move(contents)), metadata_(std::move(metadata)) {}
 
-absl::StatusOr<Input> Input::CreateFromTensors(
-    std::vector<Tensor> contents, std::string metadata,
-    std::optional<std::string> privacy_id) {
+absl::StatusOr<Input> Input::CreateFromTensors(std::vector<Tensor> contents,
+                                               std::string metadata) {
   if (contents.empty()) {
     return absl::InvalidArgumentError("No columns provided.");
   }
@@ -222,8 +218,7 @@ absl::StatusOr<Input> Input::CreateFromTensors(
           "All columns must have the same number of rows.");
     }
   }
-  return Input(TensorContents(std::move(contents)), std::move(metadata),
-               std::move(privacy_id));
+  return Input(TensorContents(std::move(contents)), std::move(metadata));
 }
 
 absl::StatusOr<RowView> Input::GetRow(uint32_t row_index) const {
@@ -285,8 +280,7 @@ void Input::MessageContents::AddColumn(Tensor&& column) {
 
 absl::StatusOr<Input> Input::CreateFromMessages(
     std::vector<std::unique_ptr<Message>> messages,
-    std::vector<Tensor> system_columns, std::string metadata,
-    std::optional<std::string> privacy_id) {
+    std::vector<Tensor> system_columns, std::string metadata) {
   ABSL_RETURN_IF_ERROR(ValidateMessageRows(messages, system_columns));
 
   // Build schema for proto columns.
@@ -305,7 +299,7 @@ absl::StatusOr<Input> Input::CreateFromMessages(
 
   return Input(MessageContents(std::move(messages), std::move(system_columns),
                                std::move(schema)),
-               std::move(metadata), std::move(privacy_id));
+               std::move(metadata));
 }
 
 absl::StatusOr<RowView> Input::MessageContents::GetRow(
@@ -422,22 +416,11 @@ absl::StatusOr<Input> CreateFromMessageCheckpoint(
     messages.push_back(std::move(message));
   }
 
-  // Extract privacy ID if present
-  std::optional<std::string> privacy_id;
-  absl::StatusOr<std::string> pid_result = GetPrivacyId(*checkpoint);
-  if (pid_result.ok()) {
-    privacy_id = *std::move(pid_result);
-  } else if (!absl::IsNotFound(pid_result.status())) {
-    // The tensor exists but is invalid.
-    return pid_result.status();
-  }
-
   std::vector<Tensor> system_columns;
   system_columns.reserve(1);
   system_columns.push_back(std::move(time_tensor));
   return Input::CreateFromMessages(std::move(messages),
-                                   std::move(system_columns),
-                                   /*metadata=*/"", std::move(privacy_id));
+                                   std::move(system_columns));
 }
 
 absl::StatusOr<std::unique_ptr<MessageFactory>>

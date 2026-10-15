@@ -742,8 +742,7 @@ TEST_F(InferenceRunnerTest, RunInferenceWithDuplicationAndMultiplePrompts) {
               ElementsAre("o1", "o2", "o3", "o4"));
 }
 
-TEST_F(InferenceRunnerTest,
-       RunInferenceMultipleRowsPreservesMetadataAndPrivacyId) {
+TEST_F(InferenceRunnerTest, RunInferenceMultipleRowsPreservesMetadata) {
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(
     inference_config {
@@ -771,15 +770,13 @@ TEST_F(InferenceRunnerTest,
   columns.push_back(Tensor({"foo", "bar"}, "transcript"));
 
   absl::StatusOr<Input> input =
-      Input::CreateFromTensors(std::move(columns), "key_1", "privacy_id_1");
+      Input::CreateFromTensors(std::move(columns), "key_1");
   ASSERT_THAT(input, IsOk());
   ASSERT_THAT(runner.RunInference(*input), IsOk());
   absl::StatusOr<std::vector<Tensor>> output_tensors =
       std::move(*input).MoveToTensors();
   ASSERT_THAT(output_tensors, IsOk());
   EXPECT_EQ(input->GetMetadata(), "key_1");
-  ASSERT_TRUE(input->GetPrivacyId().has_value());
-  EXPECT_EQ(input->GetPrivacyId().value(), "privacy_id_1");
 }
 
 }  // namespace
