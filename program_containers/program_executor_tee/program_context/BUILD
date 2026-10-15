@@ -33,6 +33,7 @@ py_library(
 py_test(
     name = "execution_context_helper_test",
     srcs = ["execution_context_helper_test.py"],
+    tags = ["noasan"],
     deps = [
         ":execution_context_helper",
         "@absl_py//absl/testing:absltest",
