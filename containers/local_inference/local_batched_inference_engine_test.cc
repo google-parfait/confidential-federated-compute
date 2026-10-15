@@ -19,10 +19,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "containers/common/inference/batched_inference_fn.h"
 #include "containers/common/inference/batched_inference_test_utils.h"
@@ -36,12 +39,15 @@
 #include "gmock/gmock.h"
 #include "google/protobuf/any.pb.h"
 #include "gtest/gtest.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_parser.h"
 #include "testing/parse_text_proto.h"
 
 namespace confidential_federated_compute::local_inference {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::MockContext;
 using ::confidential_federated_compute::Session;
@@ -54,11 +60,38 @@ using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::Field;
 using ::testing::HasSubstr;
+using ::testing::ResultOf;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
 using ::confidential_federated_compute::local_inference::testing::
     MockInferenceModel;
+using ::tensorflow_federated::aggregation::
+    FederatedComputeCheckpointParserFactory;
+using ::tensorflow_federated::aggregation::Tensor;
+
+using StringColumns =
+    absl::flat_hash_map<std::string, std::vector<std::string>>;
+
+// Parses a checkpoint of string columns into a map from column name to the
+// column's values.
+absl::StatusOr<StringColumns> ParseStringColumns(absl::string_view checkpoint) {
+  FederatedComputeCheckpointParserFactory parser_factory;
+  absl::StatusOr<
+      std::unique_ptr<tensorflow_federated::aggregation::CheckpointParser>>
+      parser = parser_factory.Create(absl::Cord(checkpoint));
+  if (!parser.ok()) return parser.status();
+  absl::StatusOr<absl::flat_hash_map<std::string, Tensor>> tensors =
+      (*parser)->LoadAllTensors();
+  if (!tensors.ok()) return tensors.status();
+  StringColumns columns;
+  for (const auto& [name, tensor] : *tensors) {
+    absl::Span<const absl::string_view> values =
+        tensor.AsSpan<absl::string_view>();
+    columns[name] = std::vector<std::string>(values.begin(), values.end());
+  }
+  return columns;
+}
 
 TEST(LocalBatchedInferenceEngineTest, EmptyPromptsReturnsEmpty) {
   auto mock_model = std::make_shared<MockInferenceModel>();
@@ -200,9 +233,20 @@ class LocalBatchedInferenceIntegrationTest : public ::testing::Test {
     SetUpFnWithColumns(config, {{"transcript", std::move(rows)}});
   }
 
-  void ExpectEmitted(const std::string& expected_checkpoint) {
-    EXPECT_CALL(mock_context_, EmitEncrypted(0, Field(&Session::KV::data,
-                                                      Eq(expected_checkpoint))))
+  // Expects a single emitted checkpoint holding exactly `expected_columns`.
+  //
+  // This compares the parsed columns rather than the serialized checkpoint,
+  // because the order in which columns are written isn't specified:
+  // BatchedInferenceFn copies the input columns in the iteration order of an
+  // absl::flat_hash_map, which can differ between processes.
+  void ExpectEmitted(const Columns& expected_columns) {
+    StringColumns expected(expected_columns.begin(), expected_columns.end());
+    ASSERT_EQ(expected.size(), expected_columns.size())
+        << "duplicate column names in expected_columns";
+    EXPECT_CALL(mock_context_,
+                EmitEncrypted(0, Field(&Session::KV::data,
+                                       ResultOf(ParseStringColumns,
+                                                IsOkAndHolds(Eq(expected))))))
         .WillOnce(Return(true));
   }
 
@@ -260,12 +304,12 @@ TEST_F(LocalBatchedInferenceIntegrationTest, MultiTaskMultiColumnPrompts) {
         return results;
       });
 
-  ExpectEmitted(inference::testing::GetCustomInferenceOutputCheckpointForTest(
+  ExpectEmitted(
       {{"topic", {"dogs", "pigs"}},
        {"transcript", {"bark", "oink"}},
        {"summary",
         {"out(summarize bark about dogs)", "out(summarize oink about pigs)"}},
-       {"sentiment", {"out(sentiment of bark)", "out(sentiment of oink)"}}}));
+       {"sentiment", {"out(sentiment of bark)", "out(sentiment of oink)"}}});
   EXPECT_THAT(Commit(), IsOk());
 }
 
@@ -291,9 +335,8 @@ TEST_F(LocalBatchedInferenceIntegrationTest, DelimiterParsingExpandsRowsOnce) {
       .WillOnce(
           Return(std::vector<absl::StatusOr<std::string>>{"dogs,pets,noise"}));
 
-  ExpectEmitted(inference::testing::GetCustomInferenceOutputCheckpointForTest(
-      {{"transcript", {"bark", "bark", "bark"}},
-       {"topic", {"dogs", "pets", "noise"}}}));
+  ExpectEmitted({{"transcript", {"bark", "bark", "bark"}},
+                 {"topic", {"dogs", "pets", "noise"}}});
   EXPECT_THAT(Commit(), IsOk());
 }
 
@@ -320,8 +363,8 @@ TEST_F(LocalBatchedInferenceIntegrationTest, AutoParsingHappensExactlyOnce) {
             R"({"topic": ["dogs", "pets"]})"};
       });
 
-  ExpectEmitted(inference::testing::GetCustomInferenceOutputCheckpointForTest(
-      {{"transcript", {"bark", "bark"}}, {"topic", {"dogs", "pets"}}}));
+  ExpectEmitted(
+      {{"transcript", {"bark", "bark"}}, {"topic", {"dogs", "pets"}}});
   EXPECT_THAT(Commit(), IsOk());
 
   // The rendered template must be present once, with the system instructions
@@ -350,8 +393,8 @@ TEST_F(LocalBatchedInferenceIntegrationTest, SkippableFailureBlanksOutRow) {
       .WillOnce(Return(std::vector<absl::StatusOr<std::string>>{
           absl::UnavailableError("model busy"), "quacking"}));
 
-  ExpectEmitted(inference::testing::GetCustomInferenceOutputCheckpointForTest(
-      {{"transcript", {"bark", "oink"}}, {"topic", {"", "quacking"}}}));
+  ExpectEmitted(
+      {{"transcript", {"bark", "oink"}}, {"topic", {"", "quacking"}}});
   EXPECT_THAT(Commit(), IsOk());
 }
 
