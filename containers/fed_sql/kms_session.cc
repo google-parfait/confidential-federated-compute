@@ -324,41 +324,34 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
                          contents.status()));
     }
 
-    // Extract privacy ID from checkpoint if in time-window budget mode.
     // TODO: Add a CreateFromTensorCheckpoint that's analogous to
-    // CreateFromMessageCheckpoint so we don't have to extract the privacy ID
-    // separately. CreateFromTensorCheckpoint would replace the separate calls
-    // to Deserialize and CreateFromTensors.
-    std::optional<std::string> privacy_id;
-    if (range_tracker_.GetAggregationWindow().has_value()) {
-      absl::StatusOr<std::string> pid = GetPrivacyId(**parser);
-      if (!pid.ok()) {
-        return ToWriteFinishedResponse(pid.status());
-      }
-      privacy_id = *std::move(pid);
-    }
-    input = Input::CreateFromTensors(std::move(contents.value()),
-                                     /*metadata=*/"", privacy_id);
+    // CreateFromMessageCheckpoint, replacing the separate calls to Deserialize
+    // and CreateFromTensors.
+    input = Input::CreateFromTensors(std::move(contents.value()));
   }
   if (!input.ok()) {
     return ToWriteFinishedResponse(PrependMessage(
         "Failed to create input for AGGREGATION_TYPE_ACCUMULATE: ",
         input.status()));
   }
-  if (inference_runner_.has_value()) {
-    ABSL_RETURN_IF_ERROR(inference_runner_->RunInference(*input));
-  }
 
   // Uniqueness check: use privacy ID in time-window budget mode, blob ID
   // otherwise.
   std::string unique_id;
   if (range_tracker_.GetAggregationWindow().has_value()) {
-    CHECK(input->GetPrivacyId().has_value())
-        << "Privacy ID is required in time-window budget mode.";
-    unique_id = *input->GetPrivacyId();
+    absl::StatusOr<std::string> privacy_id = GetPrivacyId(**parser);
+    if (!privacy_id.ok()) {
+      return ToWriteFinishedResponse(privacy_id.status());
+    }
+    unique_id = *std::move(privacy_id);
   } else {
     unique_id = metadata.hpke_plus_aead_data().blob_id();
   }
+
+  if (inference_runner_.has_value()) {
+    ABSL_RETURN_IF_ERROR(inference_runner_->RunInference(*input));
+  }
+
   auto [unused, inserted] = uncommitted_unique_ids_.insert(unique_id);
   if (!inserted) {
     return absl::FailedPreconditionError("Blob rejected due to duplicate ID");

@@ -26,7 +26,6 @@
 #include "absl/strings/str_join.h"
 #include "containers/common/inference/batched_inference_engine.h"
 #include "containers/common/inference/inference_model_helper.h"
-#include "containers/common/io/checkpoint_utils.h"
 #include "containers/common/io/tabular/input.h"
 #include "containers/common/io/tabular/row_set.h"
 #include "containers/fns/batch_do_fn.h"
@@ -492,19 +491,6 @@ BatchedInferenceFn::PrepareBlob(Element input) {
       }
     }
 
-    // The privacy ID, if present, is a scalar tensor rather than a column, so
-    // it's passed to the Input separately. It must be read before
-    // LoadAllTensors(), which moves all tensors out of the parser.
-    std::optional<std::string> privacy_id;
-    absl::StatusOr<std::string> privacy_id_or = GetPrivacyId(**parser);
-    if (privacy_id_or.ok()) {
-      privacy_id = *std::move(privacy_id_or);
-    } else if (!absl::IsNotFound(privacy_id_or.status())) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Failed to read privacy ID from checkpoint: ",
-                       privacy_id_or.status().message()));
-    }
-
     absl::StatusOr<absl::flat_hash_map<std::string, Tensor>> name_to_tensor_or =
         parser->get()->LoadAllTensors();
     if (!name_to_tensor_or.ok()) {
@@ -516,6 +502,7 @@ BatchedInferenceFn::PrepareBlob(Element input) {
     std::vector<Tensor> tensors;
     tensors.reserve(name_to_tensor_or->size());
     for (auto& [name, tensor] : *name_to_tensor_or) {
+      // The privacy ID, if present, is a scalar tensor rather than a column.
       if (name == kPrivacyIdColumnName || output_columns.contains(name)) {
         continue;
       }
@@ -523,8 +510,7 @@ BatchedInferenceFn::PrepareBlob(Element input) {
     }
     // Input::CreateFromTensors validates that all columns are one-dimensional
     // and have the same number of rows.
-    auto input_or = Input::CreateFromTensors(
-        std::move(tensors), /*metadata=*/"", std::move(privacy_id));
+    auto input_or = Input::CreateFromTensors(std::move(tensors));
     if (!input_or.ok()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Failed to create input from tensors: ",

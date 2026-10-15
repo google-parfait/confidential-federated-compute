@@ -997,24 +997,6 @@ TEST_F(BatchedInferenceFnTest, TensorCheckpointWithPrivacyId) {
               IsOk());
 }
 
-TEST_F(BatchedInferenceFnTest, TensorCheckpointWithNonScalarPrivacyIdFails) {
-  auto builder = FederatedComputeCheckpointBuilderFactory().Create();
-  ASSERT_THAT(builder->Add("transcript",
-                           Tensor(std::vector<std::string>{"bark", "oink"},
-                                  "transcript")),
-              IsOk());
-  ASSERT_THAT(builder->Add(kPrivacyIdColumnName,
-                           Tensor(std::vector<std::string>{"id1", "id2"},
-                                  kPrivacyIdColumnName)),
-              IsOk());
-  absl::StatusOr<absl::Cord> input = builder->Build();
-  ASSERT_THAT(input.status(), IsOk());
-
-  EXPECT_THAT(WriteAndCommitSingleBlob(std::string(input->Flatten())),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("must be a scalar")));
-}
-
 TEST_F(BatchedInferenceFnTest, TensorCheckpointWithDifferingRowCountsFails) {
   auto builder = FederatedComputeCheckpointBuilderFactory().Create();
   ASSERT_THAT(builder->Add("transcript",

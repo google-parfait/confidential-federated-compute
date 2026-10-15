@@ -81,7 +81,6 @@ cc_library(
     deps = [
         ":batched_inference_engine",
         ":inference_model_helper",
-        "//containers/common/io:checkpoint_utils",
         "//containers/common/io/tabular:input",
         "//containers/common/io/tabular:row_set",
         "//containers/fns",

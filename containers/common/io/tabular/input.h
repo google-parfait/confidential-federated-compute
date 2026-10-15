@@ -116,12 +116,9 @@ class FileDescriptorSetMessageFactory : public MessageFactory {
 class Input {
  public:
   // Creates an Input from Tensors.
-  //
-  // The optional `privacy_id` Tensor must be a scalar tensor of type STRING.
   static absl::StatusOr<Input> CreateFromTensors(
       std::vector<tensorflow_federated::aggregation::Tensor> contents,
-      std::string metadata = "",
-      std::optional<std::string> privacy_id = std::nullopt);
+      std::string metadata = "");
 
   // Creates an Input from a list of Messages and a list of system column
   // Tensors.
@@ -132,13 +129,10 @@ class Input {
   //
   // Each system column Tensor must be a 1-dimensional Tensor with the same
   // number of elements (rows) as the number of messages.
-  //
-  // The optional `privacy_id` Tensor must be a scalar tensor of type STRING.
   static absl::StatusOr<Input> CreateFromMessages(
       std::vector<std::unique_ptr<google::protobuf::Message>> messages,
       std::vector<tensorflow_federated::aggregation::Tensor> system_columns,
-      std::string metadata = "",
-      std::optional<std::string> privacy_id = std::nullopt);
+      std::string metadata = "");
 
   Input(Input&&) = default;
   Input& operator=(Input&&) = default;
@@ -170,8 +164,6 @@ class Input {
 
   // Returns the opaque metadata string associated with this Input.
   const std::string& GetMetadata() const { return metadata_; }
-
-  const std::optional<std::string>& GetPrivacyId() const { return privacy_id_; }
 
   absl::StatusOr<std::vector<tensorflow_federated::aggregation::Tensor>>
   MoveToTensors() &&;
@@ -269,12 +261,10 @@ class Input {
 
   using ContentsVariant = absl::variant<TensorContents, MessageContents>;
 
-  explicit Input(ContentsVariant contents, std::string metadata,
-                 std::optional<std::string> privacy_id);
+  explicit Input(ContentsVariant contents, std::string metadata);
 
   ContentsVariant contents_;
   std::string metadata_;
-  std::optional<std::string> privacy_id_;
 };
 
 absl::StatusOr<Input> CreateFromMessageCheckpoint(
