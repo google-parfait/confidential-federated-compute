@@ -109,10 +109,13 @@ cc_test(
         ":inference_model",
         ":local_batched_inference_engine",
         ":mocks",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:any_cc_proto",
@@ -123,6 +126,8 @@ cc_test(
         "@confidential-federated-compute//containers/testing",
         "@confidential-federated-compute//testing:parse_text_proto",
         "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_parser",
     ],
 )
 
