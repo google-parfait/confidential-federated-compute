@@ -162,7 +162,6 @@ KmsFedSqlSession::KmsFedSqlSession(
     : aggregator_(std::move(aggregator)),
       intrinsics_(intrinsics),
       private_state_(std::move(private_state)),
-      dp_unit_parameters_(std::move(config.dp_unit_parameters)),
       message_factory_(std::move(message_factory)),
       on_device_query_name_(std::move(config.on_device_query_name)),
       decryptor_(decryptor),

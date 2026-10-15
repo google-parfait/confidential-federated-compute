@@ -26,7 +26,7 @@
 #include "absl/strings/string_view.h"
 #include "containers/common/io/tabular/row_set.h"
 #include "containers/common/local_inference/inference_model.h"
-#include "containers/fed_sql/dp_unit.h"
+#include "containers/common/sqlite/sqlite_adapter.h"
 #include "containers/fed_sql/inference_runner.h"
 #include "containers/fed_sql/partition_private_state.h"
 #include "containers/fed_sql/private_state.h"
@@ -48,8 +48,6 @@ struct KmsSessionConfiguration {
   // Optional inference model configuration for sessions.
   std::optional<local_inference::SessionInferenceConfiguration>
       inference_configuration;
-  // Parameters for the DP units.
-  std::optional<DpUnitParameters> dp_unit_parameters;
   // Key IDs that have already expired and must be removed from the budget.
   absl::flat_hash_set<std::string> expired_key_ids;
   // The name of the query that executes on the device.
@@ -186,8 +184,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   RangeTracker range_tracker_;
   // Private state.
   std::shared_ptr<PrivateState> private_state_;
-  // Parameters for the differential privacy unit.
-  std::optional<DpUnitParameters> dp_unit_parameters_;
   // Prototype for the logged message. Used to create dynamic messages from
   // serialized message checkpoints.
   std::shared_ptr<MessageFactory> message_factory_;
