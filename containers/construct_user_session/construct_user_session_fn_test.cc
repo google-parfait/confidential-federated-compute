@@ -27,6 +27,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "containers/common/io/any_bundle.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/testing/mocks.h"
@@ -54,6 +55,8 @@ using ::fcp::confidentialcompute::AssociatedMetadata;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::CommitRequest;
 using ::fcp::confidentialcompute::ConstructUserSessionInitConfig;
+using ::fcp::confidentialcompute::PrivacyIdMetadata;
+using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
@@ -162,14 +165,26 @@ absl::StatusOr<WriteFinishedResponse> DoWrite(
   return fn.Write(write_request, checkpoint_data, context);
 }
 
-// Parses a serialized FedCompute checkpoint and returns tensors by name.
-absl::flat_hash_map<std::string, Tensor> ParseCheckpoint(
-    const std::string& data) {
+// Parses an emitted session blob and returns its checkpoint tensors by name.
+// Also verifies that the blob carries a PrivacyIdMetadata in its protected
+// metadata that matches the checkpoint's privacy ID tensor.
+absl::flat_hash_map<std::string, Tensor> ParseCheckpoint(std::string data) {
+  ProtectedMetadata protected_metadata;
+  EXPECT_TRUE(UnbundleAny(protected_metadata, data));
+
   FederatedComputeCheckpointParserFactory parser_factory;
   auto parser = parser_factory.Create(absl::Cord(data));
   CHECK_OK(parser);
   auto tensors = (*parser)->LoadAllTensors();
   CHECK_OK(tensors);
+
+  PrivacyIdMetadata privacy_id_metadata;
+  EXPECT_EQ(protected_metadata.metadata_size(), 1);
+  EXPECT_TRUE(protected_metadata.metadata_size() > 0 &&
+              protected_metadata.metadata(0).UnpackTo(&privacy_id_metadata));
+  EXPECT_EQ(privacy_id_metadata.privacy_id(),
+            tensors->at(std::string(kPrivacyIdColumnName))
+                .AsScalar<absl::string_view>());
   return *std::move(tensors);
 }
 

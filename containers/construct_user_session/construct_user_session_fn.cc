@@ -138,8 +138,8 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
   // Emits the serialized session output encrypted.
   // Returns a non-OK status only for fatal failures.
   absl::Status EmitSessionOutput(
-      std::string output_data, const absl::flat_hash_set<std::string>& key_ids,
-      DoContext& context);
+      std::string output_data, absl::string_view privacy_id,
+      const absl::flat_hash_set<std::string>& key_ids, DoContext& context);
 
   const absl::Time window_start_;
   const absl::Time window_end_;
@@ -170,8 +170,8 @@ absl::Status ConstructUserSessionFn::Do(google::protobuf::Any config,
                            std::move(output_tensors));
 
     // Return if there's a fatal failure that should abort the pipeline.
-    ABSL_RETURN_IF_ERROR(
-        EmitSessionOutput(std::move(output_data), group.key_ids, context));
+    ABSL_RETURN_IF_ERROR(EmitSessionOutput(std::move(output_data), privacy_id,
+                                           group.key_ids, context));
   }
 
   return absl::OkStatus();
@@ -260,8 +260,8 @@ std::string ConstructUserSessionFn::BuildSessionOutput(
 }
 
 absl::Status ConstructUserSessionFn::EmitSessionOutput(
-    std::string output_data, const absl::flat_hash_set<std::string>& key_ids,
-    DoContext& context) {
+    std::string output_data, absl::string_view privacy_id,
+    const absl::flat_hash_set<std::string>& key_ids, DoContext& context) {
   // Create the associated metadata with the session window timestamps.
   fcp::confidentialcompute::SessionTimeWindowMetadata time_window_metadata;
   *time_window_metadata.mutable_session_window_start() =
@@ -271,6 +271,13 @@ absl::Status ConstructUserSessionFn::EmitSessionOutput(
   time_window_metadata.mutable_key_ids()->Add(key_ids.begin(), key_ids.end());
 
   context.associated_metadata().Pack(time_window_metadata);
+
+  // The privacy ID is also kept in the session checkpoint's privacy ID tensor
+  // for downstream containers that read it from there.
+  fcp::confidentialcompute::PrivacyIdMetadata privacy_id_metadata;
+  privacy_id_metadata.set_privacy_id(privacy_id);
+  context.protected_metadata().Pack(privacy_id_metadata);
+
   // Emit the session output encrypted.
   if (!context.EmitEncrypted(/*reencryption_key_index=*/0,
                              Session::KV(std::move(output_data)))) {

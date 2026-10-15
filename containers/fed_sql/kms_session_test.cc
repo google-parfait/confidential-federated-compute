@@ -85,6 +85,8 @@ using ::fcp::confidentialcompute::
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FinalizeRequest;
 using ::fcp::confidentialcompute::FinalResultConfiguration;
+using ::fcp::confidentialcompute::PrivacyIdMetadata;
+using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
@@ -1394,6 +1396,79 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateTimeWindowDuplicatePrivacyIdFails) {
   auto write_result2 = session_->Write(write_request2, data2, context_);
   EXPECT_THAT(write_result2, StatusIs(absl::StatusCode::kFailedPrecondition,
                                       HasSubstr("duplicate ID")));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateTimeWindowBlobWithProtectedMetadataSucceeds) {
+  std::string privacy_id(16, '\x04');
+  // Session blobs from construct_user_session have ProtectedMetadata bundled
+  // with the checkpoint.
+  PrivacyIdMetadata privacy_id_metadata;
+  privacy_id_metadata.set_privacy_id(privacy_id);
+  ProtectedMetadata protected_metadata;
+  protected_metadata.add_metadata()->PackFrom(privacy_id_metadata);
+  std::string data = std::string(BundleAny(
+      protected_metadata,
+      absl::Cord(BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id))));
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data, 1, start, end);
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK)
+      << write_result->status().message();
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateTimeWindowUsesPrivacyIdFromProtectedMetadata) {
+  // Both blobs carry the same privacy ID in their protected metadata but
+  // different privacy ID tensors. The protected metadata takes precedence, so
+  // the second blob is rejected as a duplicate.
+  PrivacyIdMetadata privacy_id_metadata;
+  privacy_id_metadata.set_privacy_id(std::string(16, '\x05'));
+  ProtectedMetadata protected_metadata;
+  protected_metadata.add_metadata()->PackFrom(privacy_id_metadata);
+  std::string data1 = std::string(
+      BundleAny(protected_metadata, absl::Cord(BuildFedSqlGroupByCheckpoint(
+                                        {8}, {1}, std::string(16, '\x06')))));
+  std::string data2 = std::string(
+      BundleAny(protected_metadata, absl::Cord(BuildFedSqlGroupByCheckpoint(
+                                        {9}, {2}, std::string(16, '\x07')))));
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+
+  google::protobuf::Timestamp start;
+  start.set_seconds(1000);
+  google::protobuf::Timestamp end;
+  end.set_seconds(2000);
+
+  WriteRequest write_request1;
+  write_request1.mutable_first_request_configuration()->PackFrom(config);
+  *write_request1.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data1, 1, start, end);
+  auto write_result1 = session_->Write(write_request1, data1, context_);
+  ASSERT_THAT(write_result1, IsOk());
+  EXPECT_EQ(write_result1->status().code(), Code::OK)
+      << write_result1->status().message();
+
+  WriteRequest write_request2;
+  write_request2.mutable_first_request_configuration()->PackFrom(config);
+  *write_request2.mutable_first_request_metadata() =
+      MakeBlobMetadataWithTimeWindow(data2, 2, start, end);
+  EXPECT_THAT(session_->Write(write_request2, data2, context_),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("duplicate ID")));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,

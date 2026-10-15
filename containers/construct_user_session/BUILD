@@ -135,6 +135,7 @@ cc_test(
     srcs = ["construct_user_session_fn_test.cc"],
     deps = [
         ":construct_user_session_fn",
+        "//containers/common/io:any_bundle",
         "//containers/fns",
         "//containers/testing",
         "@com_google_absl//absl/log:check",
