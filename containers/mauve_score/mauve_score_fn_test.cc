@@ -75,6 +75,8 @@ using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::MauveScoreContainerConfigConstraints;
 using ::fcp::confidentialcompute::MauveScoreContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::MauveScoreResult;
+using ::fcp::confidentialcompute::PrivacyIdMetadata;
+using ::fcp::confidentialcompute::ProtectedMetadata;
 using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::fcp::confidentialcompute::WriteRequest;
@@ -491,6 +493,63 @@ TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobIds) {
   fcp::confidentialcompute::CommitRequest commit_request;
   EXPECT_THAT(fn_->Commit(commit_request, context_),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+ProtectedMetadata CreatePrivacyIdProtectedMetadata(
+    absl::string_view privacy_id) {
+  PrivacyIdMetadata privacy_id_metadata;
+  privacy_id_metadata.set_privacy_id(std::string(privacy_id));
+  ProtectedMetadata protected_metadata;
+  protected_metadata.add_metadata()->PackFrom(privacy_id_metadata);
+  return protected_metadata;
+}
+
+TEST_F(MauveScoreFnTest, CommitSucceedsWithDistinctPrivacyIds) {
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                         BuildCheckpoint(/*batch=*/10, kDim),
+                         CreatePrivacyIdProtectedMetadata("user-1"), context_),
+              IsOk());
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
+                         BuildCheckpoint(/*batch=*/20, kDim),
+                         CreatePrivacyIdProtectedMetadata("user-2"), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_), IsOk());
+  EXPECT_EQ(counters_["mauve-real-embeddings-count"], 30);
+}
+
+TEST_F(MauveScoreFnTest, CommitRejectsDuplicatePrivacyIds) {
+  // Different blob ids, but both blobs come from the same user.
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                         BuildCheckpoint(/*batch=*/10, kDim),
+                         CreatePrivacyIdProtectedMetadata("user-1"), context_),
+              IsOk());
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
+                         BuildCheckpoint(/*batch=*/10, kDim),
+                         CreatePrivacyIdProtectedMetadata("user-1"), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       ::testing::HasSubstr("Duplicate privacy id")));
+}
+
+TEST_F(MauveScoreFnTest, CommitRejectsMissingPrivacyIdWhenFirstInputHasOne) {
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                         BuildCheckpoint(/*batch=*/10, kDim),
+                         CreatePrivacyIdProtectedMetadata("user-1"), context_),
+              IsOk());
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
+                         BuildCheckpoint(/*batch=*/10, kDim),
+                         ProtectedMetadata(), context_),
+              IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       ::testing::HasSubstr("Missing PrivacyIdMetadata")));
 }
 
 TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedKeyBasedBlobAndSucceeds) {

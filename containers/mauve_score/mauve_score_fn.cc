@@ -70,6 +70,7 @@ using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::MauveScoreContainerConfigConstraints;
 using ::fcp::confidentialcompute::MauveScoreContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::MauveScoreResult;
+using ::fcp::confidentialcompute::PrivacyIdMetadata;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::google::protobuf::Any;
 using ::tensorflow_federated::aggregation::DT_FLOAT;
@@ -93,6 +94,48 @@ bool HasTimeWindowMetadata(const BatchDoFn::Element& input) {
   return false;
 }
 
+// Returns the privacy ID from the input's PrivacyIdMetadata protected metadata,
+// or std::nullopt if the input has none.
+std::optional<std::string> GetPrivacyId(const BatchDoFn::Element& input) {
+  for (const auto& entry : input.protected_metadata.metadata()) {
+    PrivacyIdMetadata privacy_id_metadata;
+    if (entry.UnpackTo(&privacy_id_metadata)) {
+      return privacy_id_metadata.privacy_id();
+    }
+  }
+  return std::nullopt;
+}
+
+// Checks that no two inputs come from the same user. If the first input has
+// PrivacyIdMetadata, uniqueness is checked by privacy ID and every input must
+// have one. Otherwise, uniqueness is checked by blob ID.
+absl::Status CheckForDuplicates(const std::vector<BatchDoFn::Element>& inputs) {
+  absl::flat_hash_set<std::string> seen_ids;
+  const bool use_privacy_id = GetPrivacyId(inputs.front()).has_value();
+  if (use_privacy_id) {
+    for (const BatchDoFn::Element& input : inputs) {
+      std::optional<std::string> privacy_id = GetPrivacyId(input);
+      if (!privacy_id.has_value()) {
+        return absl::InvalidArgumentError("Missing PrivacyIdMetadata.");
+      }
+      if (!seen_ids.insert(*std::move(privacy_id)).second) {
+        // The privacy ID itself is sensitive, so it isn't included.
+        return absl::InvalidArgumentError("Duplicate privacy id detected.");
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  for (const BatchDoFn::Element& input : inputs) {
+    if (!input.kv.blob_id.empty() &&
+        !seen_ids.insert(input.kv.blob_id).second) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Duplicate blob id detected: ", input.kv.blob_id));
+    }
+  }
+  return absl::OkStatus();
+}
+
 // MauveScoreFn extends BatchDoFn to compute the MAUVE score over
 // accumulated real embeddings.
 //
@@ -102,7 +145,8 @@ bool HasTimeWindowMetadata(const BatchDoFn::Element& input) {
 //                constructor
 //   Write() (BatchDoFn): Accumulates raw checkpoint blobs
 //   Commit() (BatchDoFn): Calls Do() with all accumulated blobs
-//   Do(): Parses all checkpoints → checks for duplicate blob IDs →
+//   Do(): Parses all checkpoints → checks for duplicate privacy IDs (or
+//         blob IDs if the inputs have no privacy IDs) →
 //         validates and updates budget → computes MAUVE → stores result for
 //         FinalizeReplica
 //   FinalizeReplica(): Emits the stored result via EmitReleasable with
@@ -284,22 +328,14 @@ MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
 absl::Status MauveScoreFn::Do(Any config,
                               std::vector<Element> accumulated_inputs,
                               DoContext& context) {
-  // Phase 0: Check for duplicate blob IDs.
-  absl::flat_hash_set<std::string> seen_blob_ids;
-  for (const Element& input : accumulated_inputs) {
-    const std::string& blob_id = input.kv.blob_id;
-    if (!blob_id.empty()) {
-      auto [it, inserted] = seen_blob_ids.insert(blob_id);
-      if (!inserted) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Duplicate blob id detected: ", blob_id));
-      }
-    }
-  }
-
   if (accumulated_inputs.empty()) {
     return absl::InvalidArgumentError("No real embeddings received.");
   }
+
+  // Phase 0: Check for duplicate privacy IDs, or blob IDs if the inputs have
+  // no privacy IDs.
+  ABSL_RETURN_IF_ERROR(CheckForDuplicates(accumulated_inputs));
+
   if (synthetic_data_embeddings_.empty()) {
     return absl::InvalidArgumentError("No synthetic embeddings loaded.");
   }
