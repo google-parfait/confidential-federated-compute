@@ -7,7 +7,4 @@ build --@rules_rust//rust/settings:experimental_use_allocator_libraries_with_man
 
 common --repo_env=CC=clang
 
-# Work around missing dependencies in the parent (CFC); to remove once fixed
-build --features=-layering_check
-
 build:ubsan --linkopt=-Wl,--allow-shlib-undefined

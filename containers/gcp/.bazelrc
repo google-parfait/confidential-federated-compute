@@ -14,9 +14,6 @@ common --repo_env=CC=clang
 common --action_env=CUDA_COMPILER_USE_CC_TOOLCHAIN=true
 common --action_env=CUDA_CLANG_LABEL="@llvm_toolchain//:cc-toolchain-x86_64-linux"
 
-# Work around missing dependencies in the parent (CFC); to remove once fixed
-build --features=-layering_check
-
 # Settings for remote build execution platform targets. We use the CFC-defined :remote_platform
 # target rather than defining a  target in this workspace, so we override the default values from
 # .bazelrc.common.
