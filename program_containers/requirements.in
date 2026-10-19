@@ -7,6 +7,7 @@ attrs~=23.1
 cachetools~=5.3
 chex
 dm-tree==0.1.9
+flatbuffers
 googleapis-common-protos==1.70.0
 jax>=0.4.29,<=0.7.1
 jaxlib>=0.4.29,<=0.7.1

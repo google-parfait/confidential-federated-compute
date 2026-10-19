@@ -260,6 +260,9 @@ trusted_py_runtime(
         "//program_executor_tee/program_context:program_runner",
         "@federated_language_jax//federated_language_jax",
         "@jax_privacy//jax_privacy",
+        # Needed by jax.export to (de)serialize exported functions, e.g. models
+        # sideloaded into programs.
+        "@pypi//flatbuffers",
     ],
     source_repo_names = [
         "federated_language",
