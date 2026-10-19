@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_image_layer")
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_image_layer", "py_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
@@ -32,14 +33,9 @@ compile_pip_requirements(
     requirements_txt = "requirements_lock.txt",
 )
 
-py_binary(
-    name = "main",
+py_library(
+    name = "main_lib",
     srcs = ["main.py"],
-    data = [
-        ":model.ckpt",
-        ":tokenizer.model",
-    ],
-    main = "main.py",
     deps = [
         requirement("absl_py"),
         requirement("numpy"),
@@ -49,9 +45,26 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "main",
+    srcs = ["main.py"],
+    data = [
+        ":model.ckpt",
+        ":tokenizer.model",
+    ],
+    main = "main.py",
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified, since the model weights files are not checked into the repository.
+    tags = ["manual"],
+    deps = [":main_lib"],
+)
+
 py_image_layer(
     name = "main_py",
     binary = ":main",
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified.
+    tags = ["manual"],
 )
 
 # model.ckpt and tokenizer.model files are downloaded from kaggle.
@@ -63,12 +76,18 @@ pkg_tar(
         ":tokenizer.model",
     ],
     package_dir = "/",
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified, since the model weights files are not checked into the repository.
+    tags = ["manual"],
 )
 
 oci_image(
     name = "oci_image",
     base = "@distroless_cc_debian12_base",
     entrypoint = ["/main"],
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified.
+    tags = ["manual"],
     tars = [
         # Install the APT deps.
         "@bookworm//:flat",
@@ -84,9 +103,22 @@ oci_load(
     repo_tags = [
         "minimum_pytorch:latest",
     ],
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified.
+    tags = ["manual"],
 )
 
 oci_runtime_bundle(
     name = "oci_runtime_bundle",
     image = ":oci_image",
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified.
+    tags = ["manual"],
+)
+
+build_test(
+    name = "build_test",
+    targets = [
+        ":main_lib",
+    ],
 )

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
@@ -39,12 +40,18 @@ pkg_tar(
     name = "checkpoint",
     srcs = [":gemma-3-12b-it-q4_0.gguf"],
     package_dir = "/saved_model",
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified, since the model weights file is not checked into the repository.
+    tags = ["manual"],
 )
 
 oci_image(
     name = "oci_image",
     base = "@distroless_cc_debian12_base",
     entrypoint = ["/main"],
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified.
+    tags = ["manual"],
     tars = [
         # Install the main cc binary
         ":main_tar",
@@ -57,5 +64,16 @@ oci_load(
     image = ":oci_image",
     repo_tags = [
         "minimum_llama_cpp:latest",
+    ],
+    # Don't include in `bazel build //:...` invocations. Only build/test/run when the target is
+    # explicitly specified.
+    tags = ["manual"],
+)
+
+build_test(
+    name = "build_test",
+    targets = [
+        ":main",
+        ":main_tar",
     ],
 )

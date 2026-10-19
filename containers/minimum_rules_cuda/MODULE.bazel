@@ -20,21 +20,36 @@ module(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+# go/keep-sorted start
+bazel_dep(name = "abseil-cpp", version = "20260526.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "confidential-federated-compute")
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
+bazel_dep(name = "grpc", version = "1.80.0")
+bazel_dep(name = "oak")
 bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
 bazel_dep(name = "rules_cc", version = "0.2.18")
-bazel_dep(name = "rules_python", version = "2.0.2")
-bazel_dep(name = "toolchains_llvm", version = "1.11.3")
-bazel_dep(name = "rules_oci", version = "2.2.7")
+bazel_dep(name = "rules_cuda")
 bazel_dep(name = "rules_distroless", version = "0.6.1")
+bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_proto", version = "7.1.0")
-bazel_dep(name = "confidential-federated-compute")
+bazel_dep(name = "rules_python", version = "2.0.2")
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
+# go/keep-sorted end
+
+# Module overrides
+# go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=archive_override,local_path_override,single_version_override
+single_version_override(
+    module_name = "abseil-cpp",
+    version = "20260526.0",
+)
+
 local_path_override(
     module_name = "confidential-federated-compute",
     path = "../..",
 )
 
-bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
     module_name = "federated-compute",
     integrity = "sha256-P4Tni8dgFv4cqnmLyxQg2owQ/g6rm0mRu6uovC5GgD8=",
@@ -43,19 +58,6 @@ archive_override(
     urls = ["https://github.com/google-parfait/federated-compute/archive/bb01e11345332e41310de70d2672b37eedd8b285.tar.gz"],
 )
 
-single_version_override(
-    module_name = "toolchains_llvm",
-    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
-)
-
-bazel_dep(name = "grpc", version = "1.80.0")
-bazel_dep(name = "abseil-cpp", version = "20260526.0")
-single_version_override(
-    module_name = "abseil-cpp",
-    version = "20260526.0",
-)
-
-bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
     integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
@@ -63,16 +65,21 @@ archive_override(
     urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
 )
 
-oak_crates = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
-use_repo(oak_crates, "oak_crates_index")
-
-bazel_dep(name = "rules_cuda")
 archive_override(
     module_name = "rules_cuda",
     integrity = "sha256-1p+wq8uTeO1ZELmj03RqR9cKwpuK+idfkTrF4ZehfBw=",
     strip_prefix = "rules_cuda-76cb0a6afbe814d4da3cc50b9117c64272db4c44",
     url = "https://github.com/bazel-contrib/rules_cuda/archive/76cb0a6afbe814d4da3cc50b9117c64272db4c44.tar.gz",
 )
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
+# go/keep-sorted end
+
+oak_crates = use_extension("@oak//bazel/crates:extensions.bzl", "aliased_crates_repository")
+use_repo(oak_crates, "oak_crates_index")
 
 http_archive(
     name = "sysroot",
@@ -85,7 +92,7 @@ python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
     configure_coverage_tool = False,
     ignore_root_user_error = True,
-    python_version = "3.11",
+    python_version = "3.13",
 )
 
 # Set up cc toolchain
