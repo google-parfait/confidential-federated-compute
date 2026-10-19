@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
@@ -86,4 +87,12 @@ oci_image(
 oci_runtime_bundle(
     name = "oci_runtime_bundle",
     image = ":oci_image",
+)
+
+build_test(
+    name = "build_test",
+    targets = [
+        ":main",
+        ":oci_runtime_bundle",
+    ],
 )
