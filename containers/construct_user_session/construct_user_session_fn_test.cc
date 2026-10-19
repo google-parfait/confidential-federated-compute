@@ -165,9 +165,21 @@ absl::StatusOr<WriteFinishedResponse> DoWrite(
   return fn.Write(write_request, checkpoint_data, context);
 }
 
+// Returns the privacy ID from the PrivacyIdMetadata protected metadata bundled
+// with an emitted session blob.
+std::string GetEmittedPrivacyId(std::string data) {
+  ProtectedMetadata protected_metadata;
+  EXPECT_TRUE(UnbundleAny(protected_metadata, data));
+  PrivacyIdMetadata privacy_id_metadata;
+  EXPECT_EQ(protected_metadata.metadata_size(), 1);
+  EXPECT_TRUE(protected_metadata.metadata_size() > 0 &&
+              protected_metadata.metadata(0).UnpackTo(&privacy_id_metadata));
+  return privacy_id_metadata.privacy_id();
+}
+
 // Parses an emitted session blob and returns its checkpoint tensors by name.
-// Also verifies that the blob carries a PrivacyIdMetadata in its protected
-// metadata that matches the checkpoint's privacy ID tensor.
+// Also verifies that the checkpoint doesn't contain a privacy ID tensor, since
+// the privacy ID is carried in the protected metadata instead.
 absl::flat_hash_map<std::string, Tensor> ParseCheckpoint(std::string data) {
   ProtectedMetadata protected_metadata;
   EXPECT_TRUE(UnbundleAny(protected_metadata, data));
@@ -177,14 +189,7 @@ absl::flat_hash_map<std::string, Tensor> ParseCheckpoint(std::string data) {
   CHECK_OK(parser);
   auto tensors = (*parser)->LoadAllTensors();
   CHECK_OK(tensors);
-
-  PrivacyIdMetadata privacy_id_metadata;
-  EXPECT_EQ(protected_metadata.metadata_size(), 1);
-  EXPECT_TRUE(protected_metadata.metadata_size() > 0 &&
-              protected_metadata.metadata(0).UnpackTo(&privacy_id_metadata));
-  EXPECT_EQ(privacy_id_metadata.privacy_id(),
-            tensors->at(std::string(kPrivacyIdColumnName))
-                .AsScalar<absl::string_view>());
+  EXPECT_FALSE(tensors->contains(std::string(kPrivacyIdColumnName)));
   return *std::move(tensors);
 }
 
@@ -313,10 +318,8 @@ TEST_F(ConstructUserSessionFnTest, SingleBlobWithInWindowRowsPassesThrough) {
 
   ASSERT_THAT(fn_->Commit(CommitRequest(), context_), IsOk());
 
+  EXPECT_EQ(GetEmittedPrivacyId(emitted_kv.data), "user_1");
   auto tensors = ParseCheckpoint(emitted_kv.data);
-  EXPECT_EQ(tensors.at(std::string(kPrivacyIdColumnName))
-                .AsScalar<absl::string_view>(),
-            "user_1");
   EXPECT_THAT(tensors.at(absl::StrCat(kQueryName, "/score")).AsSpan<int32_t>(),
               ElementsAre(42));
 
@@ -437,11 +440,10 @@ MATCHER_P3(HasCheckpointFor, privacy_id, score_matcher, key_ids_matcher,
            absl::StrCat("checkpoint for '", privacy_id, "' with scores ",
                         testing::PrintToString(score_matcher), " and key IDs ",
                         testing::PrintToString(key_ids_matcher))) {
-  auto tensors = ParseCheckpoint(arg.kv.data);
-  if (tensors.at(std::string(kPrivacyIdColumnName))
-          .template AsScalar<absl::string_view>() != privacy_id) {
+  if (GetEmittedPrivacyId(arg.kv.data) != privacy_id) {
     return false;
   }
+  auto tensors = ParseCheckpoint(arg.kv.data);
   std::string score_col = absl::StrCat(kQueryName, "/score");
   auto span = tensors.at(score_col).template AsSpan<int32_t>();
   if (!testing::ExplainMatchResult(

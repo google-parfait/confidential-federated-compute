@@ -36,10 +36,6 @@ class Checkpoint {
   // Returns a string view of the privacy ID.
   absl::string_view privacy_id() const;
 
-  // Moves and returns the original scalar privacy ID tensor. This method is
-  // destructive.
-  tensorflow_federated::aggregation::Tensor take_privacy_id_tensor();
-
   // Returns a map of all 1-dimensional column tensors, including the event time
   // DT_STRING tensor and opaque client data columns.
   const absl::flat_hash_map<std::string,

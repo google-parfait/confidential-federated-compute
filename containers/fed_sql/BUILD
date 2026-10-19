@@ -245,7 +245,6 @@ cc_library(
         "//containers:session",
         "//containers/common:privacy_id_utils",
         "//containers/common/io:any_bundle",
-        "//containers/common/io:checkpoint_utils",
         "//containers/common/io/tabular:input",
         "//containers/common/io/tabular:row_set",
         "//containers/common/local_inference:inference_model",

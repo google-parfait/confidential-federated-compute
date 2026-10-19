@@ -28,7 +28,6 @@
 #include "absl/strings/escaping.h"
 #include "containers/big_endian.h"
 #include "containers/common/io/any_bundle.h"
-#include "containers/common/io/checkpoint_utils.h"
 #include "containers/common/io/tabular/input.h"
 #include "containers/common/io/tabular/row_set.h"
 #include "containers/common/privacy_id_utils.h"
@@ -347,8 +346,7 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
   // otherwise.
   std::string unique_id;
   if (range_tracker_.GetAggregationWindow().has_value()) {
-    // Prefer the privacy ID from the protected metadata, falling back to the
-    // checkpoint's privacy ID tensor.
+    // The privacy ID is carried in the protected metadata.
     std::optional<std::string> privacy_id;
     for (const auto& entry : protected_metadata.metadata()) {
       PrivacyIdMetadata privacy_id_metadata;
@@ -358,12 +356,8 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
       }
     }
     if (!privacy_id.has_value()) {
-      absl::StatusOr<std::string> checkpoint_privacy_id =
-          GetPrivacyId(**parser);
-      if (!checkpoint_privacy_id.ok()) {
-        return ToWriteFinishedResponse(checkpoint_privacy_id.status());
-      }
-      privacy_id = *std::move(checkpoint_privacy_id);
+      return ToWriteFinishedResponse(absl::InvalidArgumentError(
+          "Missing PrivacyIdMetadata in time-window budget mode."));
     }
     unique_id = *std::move(privacy_id);
   } else {
