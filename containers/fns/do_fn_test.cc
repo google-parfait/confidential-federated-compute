@@ -24,6 +24,7 @@
 #include "containers/common/io/any_bundle.h"
 #include "containers/fns/fn.h"
 #include "containers/testing/mocks.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/tee_payload_metadata.pb.h"
 #include "gmock/gmock.h"
@@ -36,6 +37,7 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::ConfigureResponse;
@@ -109,6 +111,33 @@ TEST_F(DoFnTest, WriteCallsDoWithRightBlobIdForHpkeMetadata) {
   std::string data = "somedata";
   WriteRequest request;
   *request.mutable_first_request_configuration() = config;
+  BlobHeader header;
+  header.set_blob_id("encrypted_blob_id");
+  header.set_key_id("key_id");
+  auto* hpke_plus_aead_data =
+      request.mutable_first_request_metadata()->mutable_hpke_plus_aead_data();
+  hpke_plus_aead_data->set_blob_id("encrypted_blob_id");
+  hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(header);
+
+  DoFn::KV passed_input;
+  EXPECT_CALL(*session_, Do(_, _))
+      .WillOnce(DoAll(SaveArg<0>(&passed_input), Return(absl::OkStatus())));
+
+  absl::StatusOr<WriteFinishedResponse> result =
+      session_->Write(request, data, context_);
+  ASSERT_THAT(result, IsOk());
+  EXPECT_EQ(result->committed_size_bytes(), data.size());
+  EXPECT_EQ(passed_input.blob_id, "encrypted_blob_id");
+}
+
+TEST_F(DoFnTest, WriteIgnoresUnauthenticatedBlobIdForHpkeMetadata) {
+  Any config;
+  config.set_type_url("bar");
+  std::string data = "somedata";
+  WriteRequest request;
+  *request.mutable_first_request_configuration() = config;
   request.mutable_first_request_metadata()
       ->mutable_hpke_plus_aead_data()
       ->set_blob_id("encrypted_blob_id");
@@ -120,8 +149,7 @@ TEST_F(DoFnTest, WriteCallsDoWithRightBlobIdForHpkeMetadata) {
   absl::StatusOr<WriteFinishedResponse> result =
       session_->Write(request, data, context_);
   ASSERT_THAT(result, IsOk());
-  EXPECT_EQ(result->committed_size_bytes(), data.size());
-  EXPECT_EQ(passed_input.blob_id, "encrypted_blob_id");
+  EXPECT_TRUE(passed_input.blob_id.empty());
 }
 
 TEST_F(DoFnTest, WriteCallsDoWithNoBlobId) {

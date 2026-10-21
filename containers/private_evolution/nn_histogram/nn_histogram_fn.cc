@@ -105,10 +105,6 @@ absl::Status NNHistogramFn::Do(KV input, DoContext& context) {
       builder->Add(std::string(kIndexTensorName), std::move(index_t)));
   ABSL_ASSIGN_OR_RETURN(auto checkpoint, builder->Build());
 
-  if (input.blob_id.empty()) {
-    return absl::InvalidArgumentError("Missing input blob id.");
-  }
-
   if (!context.EmitEncrypted(
           /*reencryption_key_index=*/0,
           Session::KV(std::move(input.key), std::string(std::move(checkpoint)),

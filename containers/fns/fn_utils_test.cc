@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "gtest/gtest.h"
@@ -26,21 +27,75 @@ using ::fcp::confidentialcompute::AssociatedMetadata;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 
-TEST(FnUtilsTest, GetBlobIdUnencryptedReturnsBlobId) {
+BlobMetadata MakeEncryptedMetadata(absl::string_view blob_id_copy) {
+  BlobMetadata metadata;
+  metadata.mutable_hpke_plus_aead_data()->set_blob_id(
+      std::string(blob_id_copy));
+  return metadata;
+}
+
+TEST(FnUtilsTest, GetAuthenticatedBlobIdUnencryptedReturnsBlobId) {
   BlobMetadata metadata;
   metadata.mutable_unencrypted()->set_blob_id("test_blob_id");
-  EXPECT_EQ(GetBlobId(metadata), "test_blob_id");
+  EXPECT_EQ(GetAuthenticatedBlobId(metadata), "test_blob_id");
 }
 
-TEST(FnUtilsTest, GetBlobIdHpkePlusAeadDataReturnsBlobId) {
-  BlobMetadata metadata;
-  metadata.mutable_hpke_plus_aead_data()->set_blob_id("another_blob_id");
-  EXPECT_EQ(GetBlobId(metadata), "another_blob_id");
+TEST(FnUtilsTest, GetAuthenticatedBlobIdReturnsDirectBlobHeaderBlobId) {
+  BlobHeader header;
+  header.set_blob_id("header_blob_id");
+  header.set_key_id("key_id");
+  BlobMetadata metadata = MakeEncryptedMetadata("header_blob_id");
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(header);
+  EXPECT_EQ(GetAuthenticatedBlobId(metadata), "header_blob_id");
 }
 
-TEST(FnUtilsTest, GetBlobIdEmptyMetadataReturnsEmptyString) {
+TEST(FnUtilsTest, GetAuthenticatedBlobIdReturnsBundledBlobHeaderBlobId) {
+  BlobHeader header;
+  header.set_blob_id("header_blob_id");
+  header.set_key_id("key_id");
+  AssociatedMetadata associated_metadata;
+  associated_metadata.add_metadata()->PackFrom(header);
+  BlobMetadata metadata = MakeEncryptedMetadata("header_blob_id");
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(associated_metadata);
+  EXPECT_EQ(GetAuthenticatedBlobId(metadata), "header_blob_id");
+}
+
+TEST(FnUtilsTest, GetAuthenticatedBlobIdIgnoresUnauthenticatedBlobIdCopy) {
+  BlobHeader header;
+  header.set_blob_id("header_blob_id");
+  header.set_key_id("key_id");
+  BlobMetadata metadata = MakeEncryptedMetadata("other_blob_id");
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(header);
+  EXPECT_EQ(GetAuthenticatedBlobId(metadata), "header_blob_id");
+}
+
+TEST(FnUtilsTest, GetAuthenticatedBlobIdWithoutBlobHeaderReturnsEmptyString) {
+  // E.g. sessionized inputs, whose associated data has no BlobHeader.
+  AssociatedMetadata associated_metadata;
+  BlobMetadata metadata = MakeEncryptedMetadata("blob_id_copy");
+  metadata.mutable_hpke_plus_aead_data()
+      ->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(associated_metadata);
+  EXPECT_EQ(GetAuthenticatedBlobId(metadata), "");
+}
+
+TEST(FnUtilsTest, GetAuthenticatedBlobIdWithoutAssociatedDataReturnsEmpty) {
+  EXPECT_EQ(GetAuthenticatedBlobId(MakeEncryptedMetadata("blob_id_copy")), "");
+}
+
+TEST(FnUtilsTest, GetAuthenticatedBlobIdEmptyMetadataReturnsEmptyString) {
   BlobMetadata metadata;
-  EXPECT_EQ(GetBlobId(metadata), "");
+  EXPECT_EQ(GetAuthenticatedBlobId(metadata), "");
 }
 
 TEST(ExtractAssociatedMetadataTest,

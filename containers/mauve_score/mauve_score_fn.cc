@@ -127,8 +127,11 @@ absl::Status CheckForDuplicates(const std::vector<BatchDoFn::Element>& inputs) {
   }
 
   for (const BatchDoFn::Element& input : inputs) {
-    if (!input.kv.blob_id.empty() &&
-        !seen_ids.insert(input.kv.blob_id).second) {
+    // An empty blob ID means the input has no authenticated blob ID.
+    if (input.kv.blob_id.empty()) {
+      return absl::InvalidArgumentError("Missing authenticated blob id.");
+    }
+    if (!seen_ids.insert(input.kv.blob_id).second) {
       return absl::InvalidArgumentError(
           absl::StrCat("Duplicate blob id detected: ", input.kv.blob_id));
     }
@@ -300,10 +303,14 @@ MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
     std::string key_id = "";
     for (const auto& entry : input.associated_metadata.metadata()) {
       BlobHeader blob_header;
-      if (entry.UnpackTo(&blob_header)) {
+      if (entry.UnpackTo(&blob_header) && !blob_header.key_id().empty()) {
         key_id = blob_header.key_id();
         break;
       }
+    }
+    if (key_id.empty()) {
+      return absl::InvalidArgumentError(
+          "Missing BlobHeader with a key id in key-based budget mode.");
     }
 
     if (!budget_.HasRemainingBudget(key_id)) {

@@ -36,7 +36,8 @@ BatchDoFn::Write(fcp::confidentialcompute::WriteRequest write_request,
   size_t data_size = unencrypted_data.size();
   Element input;
   input.kv.data = std::move(unencrypted_data);
-  input.kv.blob_id = GetBlobId(write_request.first_request_metadata());
+  input.kv.blob_id =
+      GetAuthenticatedBlobId(write_request.first_request_metadata());
   input.kv.key = std::move(write_request.first_request_configuration());
   input.associated_metadata =
       ExtractAssociatedMetadata(write_request.first_request_metadata());

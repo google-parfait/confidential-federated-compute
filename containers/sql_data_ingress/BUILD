@@ -59,6 +59,7 @@ cc_test(
         "@com_google_protobuf//:any_cc_proto",
         "@com_google_protobuf//:protobuf",
         "@federated_compute//fcp/confidentialcompute:constants",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:sql_data_ingress_config_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:sql_query_cc_proto",

@@ -237,6 +237,10 @@ absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
                            time_window.start(), ", ", time_window.end(), ")"));
         }
         for (const auto& key_id : time_window_metadata.key_ids()) {
+          if (key_id.empty()) {
+            return absl::InvalidArgumentError(
+                "Empty key id in SessionTimeWindowMetadata.");
+          }
           if (!private_state_->budget.HasRemainingBudget(key_id)) {
             return absl::FailedPreconditionError(
                 absl::StrCat("No budget remaining for key id: ",
@@ -253,6 +257,9 @@ absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
   // checking.
   BlobHeader header;
   if (UnpackAssociatedBlobHeader(kms_associated_data, &header)) {
+    if (header.key_id().empty()) {
+      return absl::InvalidArgumentError("Empty key id in BlobHeader.");
+    }
     auto blob_id = LoadBigEndian<absl::uint128>(header.blob_id());
     uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
     if (!private_state_->budget.HasRemainingBudget(header.key_id(),
@@ -361,7 +368,14 @@ KmsFedSqlSession::Accumulate(fcp::confidentialcompute::BlobMetadata metadata,
     }
     unique_id = *std::move(privacy_id);
   } else {
-    unique_id = metadata.hpke_plus_aead_data().blob_id();
+    // Use the blob ID from the authenticated BlobHeader rather than
+    // hpke_plus_aead_data.blob_id, which isn't covered by the associated data.
+    BlobHeader header;
+    if (!UnpackAssociatedBlobHeader(kms_associated_data, &header)) {
+      return ToWriteFinishedResponse(absl::InvalidArgumentError(
+          "Failed to unpack BlobHeader from kms_associated_data."));
+    }
+    unique_id = header.blob_id();
   }
 
   if (inference_runner_.has_value()) {

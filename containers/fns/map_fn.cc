@@ -32,7 +32,8 @@ absl::StatusOr<fcp::confidentialcompute::WriteFinishedResponse> MapFn::Write(
   size_t unencrypted_data_size = unencrypted_data.size();
   KV input;
   input.data = std::move(unencrypted_data);
-  input.blob_id = GetBlobId(write_request.first_request_metadata());
+  input.blob_id =
+      GetAuthenticatedBlobId(write_request.first_request_metadata());
   input.key = std::move(write_request.first_request_configuration());
   MapContext map_context(
       context,

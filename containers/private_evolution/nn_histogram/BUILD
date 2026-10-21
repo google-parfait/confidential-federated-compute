@@ -56,8 +56,10 @@ cc_test(
     srcs = ["nn_histogram_fn_test.cc"],
     deps = [
         ":nn_histogram_fn",
+        ":utils",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:nn_histogram_config_cc_proto",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

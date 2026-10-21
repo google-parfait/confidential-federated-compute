@@ -20,9 +20,11 @@
 
 namespace confidential_federated_compute::fns {
 
-// Returns the blob ID from the BlobMetadata if it exists, otherwise returns an
-// empty string. Shared by DoFn, MapFn, and BatchDoFn.
-std::string GetBlobId(const fcp::confidentialcompute::BlobMetadata& metadata);
+// Returns the blob ID from the authenticated BlobHeader in the BlobMetadata's
+// associated data, or an empty string if there's no BlobHeader. For unencrypted
+// blobs, returns the unencrypted blob ID. Shared by DoFn, MapFn, and BatchDoFn.
+std::string GetAuthenticatedBlobId(
+    const fcp::confidentialcompute::BlobMetadata& metadata);
 
 // Extracts the AssociatedMetadata from the BlobMetadata if present.
 // Returns an empty AssociatedMetadata if not found.

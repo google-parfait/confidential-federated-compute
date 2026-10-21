@@ -1042,6 +1042,7 @@ TEST_F(BatchedInferenceFnTest, PropagatesAssociatedMetadataPerBlob) {
   // blob1 carries associated metadata, blob2 does not.
   BlobHeader header;
   header.set_blob_id("header_blob_id");
+  header.set_key_id("key_id");
   AssociatedMetadata assoc_metadata;
   assoc_metadata.add_metadata()->PackFrom(header);
   WriteRequest write_request_1;
@@ -1101,7 +1102,8 @@ TEST_F(BatchedInferenceFnTest, PropagatesAssociatedMetadataPerBlob) {
   ASSERT_THAT(commit_result.status(), IsOk());
   EXPECT_EQ(commit_result->stats().num_inputs_committed(), 2);
 
-  EXPECT_EQ(emitted_with_metadata.blob_id, "blob1");
+  // The emitted blob ID comes from the authenticated BlobHeader.
+  EXPECT_EQ(emitted_with_metadata.blob_id, "header_blob_id");
   ASSERT_EQ(emitted_metadata.metadata_size(), 1);
   BlobHeader emitted_header;
   ASSERT_TRUE(emitted_metadata.metadata(0).UnpackTo(&emitted_header));

@@ -150,6 +150,7 @@ absl::StatusOr<WriteFinishedResponse> DoWrite(
     const std::string& blob_id = "blob_1",
     const std::string& key_id = "key_1") {
   BlobHeader header;
+  header.set_blob_id(blob_id);
   header.set_key_id(key_id);
 
   WriteRequest write_request;

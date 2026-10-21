@@ -1355,6 +1355,64 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfRepeatedBlobFails) {
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateOfRepeatedBlobHeaderWithDifferentBlobIdFails) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(data, 1, "key_foo");
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK)
+      << write_result->status().message();
+
+  // Same BlobHeader in the associated data, different
+  // hpke_plus_aead_data.blob_id.
+  write_request.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_blob_id(StoreBigEndian(absl::MakeUint128(1, 1)));
+  write_result = session_->Write(write_request, data, context_);
+  EXPECT_THAT(write_result,
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("Blob rejected due to duplicate ID")));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       AccumulateAssociatedMetadataWithBlobHeaderTypeUrlFails) {
+  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+
+  BlobHeader blob_header;
+  *blob_header.mutable_blob_id() = StoreBigEndian(absl::MakeUint128(1, 0));
+  *blob_header.mutable_key_id() = "key_foo";
+  AssociatedMetadata associated_metadata;
+  associated_metadata.add_metadata()->PackFrom(blob_header);
+  BlobMetadata metadata;
+  metadata.set_total_size_bytes(data.size());
+  auto* hpke_plus_aead_data = metadata.mutable_hpke_plus_aead_data();
+  hpke_plus_aead_data->set_blob_id(blob_header.blob_id());
+  auto* any = hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data()
+                  ->mutable_associated_metadata();
+  any->PackFrom(associated_metadata);
+  // An AssociatedMetadata payload labeled as a BlobHeader.
+  any->set_type_url("type.googleapis.com/fcp.confidentialcompute.BlobHeader");
+  *write_request.mutable_first_request_metadata() = metadata;
+
+  auto write_result = session_->Write(write_request, data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::INVALID_ARGUMENT);
+  EXPECT_THAT(write_result->status().message(),
+              HasSubstr("Empty key id in BlobHeader"));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
        AccumulateTimeWindowBlobMissingPrivacyIdMetadataFails) {
   // Use a checkpoint without PrivacyIdMetadata protected metadata.
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});

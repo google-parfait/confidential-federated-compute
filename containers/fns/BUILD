@@ -55,6 +55,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:any_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@oak//cc/crypto:signing_key",
     ],
@@ -119,6 +120,7 @@ cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:cord",
         "@com_google_protobuf//:any_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:tee_payload_metadata_cc_proto",
         "@googletest//:gtest",
@@ -131,6 +133,7 @@ cc_test(
     srcs = ["fn_utils_test.cc"],
     deps = [
         ":fns",
+        "@com_google_absl//absl/strings:string_view",
         "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@googletest//:gtest",

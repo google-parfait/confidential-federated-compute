@@ -15,16 +15,30 @@
 
 #include <string>
 
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute::fns {
 
-std::string GetBlobId(const fcp::confidentialcompute::BlobMetadata& metadata) {
+std::string GetAuthenticatedBlobId(
+    const fcp::confidentialcompute::BlobMetadata& metadata) {
   switch (metadata.encryption_metadata_case()) {
     case fcp::confidentialcompute::BlobMetadata::kUnencrypted:
+      // Unencrypted blobs have no associated data to authenticate against.
       return metadata.unencrypted().blob_id();
-    case fcp::confidentialcompute::BlobMetadata::kHpkePlusAeadData:
-      return metadata.hpke_plus_aead_data().blob_id();
+    case fcp::confidentialcompute::BlobMetadata::kHpkePlusAeadData: {
+      // Don't use hpke_plus_aead_data.blob_id, which isn't covered by the
+      // associated data.
+      fcp::confidentialcompute::AssociatedMetadata associated_metadata =
+          ExtractAssociatedMetadata(metadata);
+      for (const auto& entry : associated_metadata.metadata()) {
+        fcp::confidentialcompute::BlobHeader header;
+        if (entry.UnpackTo(&header)) {
+          return header.blob_id();
+        }
+      }
+      return "";
+    }
     default:
       return "";
   }

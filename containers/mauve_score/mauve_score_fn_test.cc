@@ -88,6 +88,7 @@ using ::tensorflow_federated::aggregation::Tensor;
 using ::tensorflow_federated::aggregation::TensorShape;
 using ::tensorflow_federated::aggregation::VectorData;
 using ::testing::_;
+using ::testing::HasSubstr;
 using ::testing::Return;
 using ::testing::StrictMock;
 
@@ -350,6 +351,7 @@ class MauveScoreFnTest : public testing::Test {
                                               absl::string_view key_id) {
     WriteRequest request;
     BlobHeader header;
+    header.set_blob_id(std::string(blob_id));
     header.set_key_id(std::string(key_id));
     request.mutable_first_request_metadata()
         ->mutable_hpke_plus_aead_data()
@@ -495,6 +497,57 @@ TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobIds) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobHeaderIds) {
+  // Same BlobHeader in the associated data, different blob ID copies.
+  WriteRequest request1 = CreateKeyIdWriteRequest("blob-1", "key-1");
+  ASSERT_THAT(
+      fn_->Write(request1, BuildCheckpoint(/*batch=*/10, kDim), context_),
+      IsOk());
+  WriteRequest request2 = CreateKeyIdWriteRequest("blob-1", "key-1");
+  request2.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_blob_id("blob-2");
+  ASSERT_THAT(
+      fn_->Write(request2, BuildCheckpoint(/*batch=*/10, kDim), context_),
+      IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Duplicate blob id detected")));
+}
+
+TEST_F(MauveScoreFnTest, CommitRejectsInputWithoutAuthenticatedBlobId) {
+  // No BlobHeader in the associated data and no privacy ID.
+  WriteRequest request;
+  request.mutable_first_request_metadata()
+      ->mutable_hpke_plus_aead_data()
+      ->set_blob_id("blob-1");
+  ASSERT_THAT(
+      fn_->Write(request, BuildCheckpoint(/*batch=*/10, kDim), context_),
+      IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Missing authenticated blob id")));
+}
+
+TEST_F(MauveScoreFnTest, CommitRejectsKeyBasedInputWithoutKeyId) {
+  // An unencrypted input has a blob ID but no BlobHeader with a key ID.
+  WriteRequest request;
+  request.mutable_first_request_metadata()->mutable_unencrypted()->set_blob_id(
+      "blob-1");
+  ASSERT_THAT(
+      fn_->Write(request, BuildCheckpoint(/*batch=*/10, kDim), context_),
+      IsOk());
+
+  fcp::confidentialcompute::CommitRequest commit_request;
+  EXPECT_THAT(fn_->Commit(commit_request, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Missing BlobHeader with a key id")));
+}
+
 ProtectedMetadata CreatePrivacyIdProtectedMetadata(
     absl::string_view privacy_id) {
   PrivacyIdMetadata privacy_id_metadata;
@@ -584,13 +637,17 @@ TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedTimeBasedBlobAndSucceeds) {
   auto fn = CreateFnWithState(budget->SerializeAsString(), /*budget_times=*/1);
 
   // Blob 1 has exhausted time window [0, 3600) (10 embeddings) -> ignored.
-  ASSERT_THAT(fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 3600),
-                        BuildCheckpoint(/*batch=*/10, kDim), context_),
-              IsOk());
+  ASSERT_THAT(
+      fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 3600),
+                BuildCheckpoint(/*batch=*/10, kDim),
+                CreatePrivacyIdProtectedMetadata("user-blob-1"), context_),
+      IsOk());
   // Blob 2 has valid time window [3600, 7200) (50 embeddings) -> processed.
-  ASSERT_THAT(fn->Write(CreateTimeWindowWriteRequest("blob-2", 3600, 7200),
-                        BuildCheckpoint(/*batch=*/50, kDim), context_),
-              IsOk());
+  ASSERT_THAT(
+      fn->Write(CreateTimeWindowWriteRequest("blob-2", 3600, 7200),
+                BuildCheckpoint(/*batch=*/50, kDim),
+                CreatePrivacyIdProtectedMetadata("user-blob-2"), context_),
+      IsOk());
 
   fcp::confidentialcompute::CommitRequest commit_request;
   EXPECT_THAT(fn->Commit(commit_request, context_), IsOk());
@@ -626,7 +683,8 @@ TEST_F(MauveScoreFnTest, CommitFailsWhenAllTimeBasedBlobsHaveExhaustedBudget) {
 
   ASSERT_THAT(
       fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 3600, "key-1"),
-                BuildCheckpoint(/*batch=*/10, kDim), context_),
+                BuildCheckpoint(/*batch=*/10, kDim),
+                CreatePrivacyIdProtectedMetadata("user-blob-1"), context_),
       IsOk());
 
   fcp::confidentialcompute::CommitRequest commit_request;
@@ -642,7 +700,8 @@ TEST_F(MauveScoreFnTest, CommitRejectsTimeWindowTooShort) {
   // 30 minutes < 60 minutes required.
   ASSERT_THAT(
       fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 1800, "key-1"),
-                BuildCheckpoint(/*batch=*/10, kDim), context_),
+                BuildCheckpoint(/*batch=*/10, kDim),
+                CreatePrivacyIdProtectedMetadata("user-blob-1"), context_),
       IsOk());
 
   fcp::confidentialcompute::CommitRequest commit_request;

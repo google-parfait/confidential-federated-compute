@@ -18,11 +18,13 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/nn_histogram_config.pb.h"
 #include "gmock/gmock.h"
 #include "google/protobuf/any.h"
 #include "gtest/gtest.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"
+#include "utils.h"
 
 namespace confidential_federated_compute::nn_histogram {
 namespace {
@@ -34,6 +36,7 @@ using ::absl_testing::IsOk;
 using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::NNHistogramContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::ReadResponse;
@@ -117,11 +120,19 @@ NearestNeighborFn CreateValidNearestNeighborFn() {
       };
 }
 
+// Returns a request with `kBlobId` in an authenticated BlobHeader in the
+// associated data, as for client uploads.
 WriteRequest CreateWriteRequest() {
+  BlobHeader header;
+  header.set_blob_id(std::string(kBlobId));
+  header.set_key_id("key_id");
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id(std::string(kBlobId));
+  auto* hpke_plus_aead_data =
+      request.mutable_first_request_metadata()->mutable_hpke_plus_aead_data();
+  hpke_plus_aead_data->set_blob_id(std::string(kBlobId));
+  hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(header);
   return request;
 }
 
@@ -221,6 +232,14 @@ TEST_F(NNHistogramFnTest, WrongInputTensorDimension) {
 }
 
 TEST_F(NNHistogramFnTest, MismatchEmbeddingDimension) {
+  // Use FindNearestNeighbor, which checks the embedding dimensions.
+  auto fn_factory = ProvideNNHistogramFnFactory(
+      CreateValidInitConfig(), Any(), CreateWriteConfigurationMap(),
+      CreateValidReadRecordFn(), FindNearestNeighbor);
+  ASSERT_THAT(fn_factory, IsOk());
+  auto fn = (*fn_factory)->CreateFn();
+  ASSERT_THAT(fn, IsOk());
+
   FederatedComputeCheckpointBuilderFactory factory;
   auto builder = factory.Create();
   auto t = Tensor::Create(DT_FLOAT, TensorShape({2, 2}),
@@ -232,23 +251,8 @@ TEST_F(NNHistogramFnTest, MismatchEmbeddingDimension) {
   auto ckpt = builder->Build();
   ASSERT_THAT(ckpt, IsOk());
 
-  auto result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST_F(NNHistogramFnTest, MissingInputBlobId) {
-  FederatedComputeCheckpointBuilderFactory factory;
-  auto builder = factory.Create();
-  auto t = Tensor::Create(
-      DT_FLOAT, TensorShape({1, 3}),
-      std::make_unique<VectorData<float>>(std::vector<float>{0.3, 0.4, 0.8}));
-  ASSERT_THAT(t, IsOk());
-  ASSERT_THAT(builder->Add(std::string(kDataTensorName), std::move(*t)),
-              IsOk());
-  auto ckpt = builder->Build();
-  ASSERT_THAT(ckpt, IsOk());
-
-  auto result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
+  auto result =
+      (*fn)->Write(CreateWriteRequest(), std::string(*ckpt), context_);
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -276,8 +280,10 @@ TEST_F(NNHistogramFnTest, Success) {
   ASSERT_THAT(output_ckpt, IsOk());
 
   EXPECT_CALL(context_,
-              EmitEncrypted(Eq(0), FieldsAre(_, Eq(std::string(*output_ckpt)),
-                                             Eq(std::string(kBlobId)))))
+              EmitEncrypted(Eq(0),
+                            FieldsAre(_, Eq(std::string(*output_ckpt)),
+                                      Eq(std::string(kBlobId))),
+                            _))
       .WillOnce(Return(true));
 
   auto result = fn_->Write(request, std::string(*ckpt), context_);
@@ -299,7 +305,7 @@ TEST_F(NNHistogramFnTest, EmitFailed) {
               IsOk());
   auto ckpt = builder->Build();
   ASSERT_THAT(ckpt, IsOk());
-  EXPECT_CALL(context_, EmitEncrypted(_, _)).WillOnce(Return(false));
+  EXPECT_CALL(context_, EmitEncrypted(_, _, _)).WillOnce(Return(false));
 
   auto result = fn_->Write(request, std::string(*ckpt), context_);
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));

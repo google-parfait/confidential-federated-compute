@@ -22,11 +22,13 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "containers/fns/fn.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
 #include "containers/testing/mocks.h"
 #include "fcp/confidentialcompute/constants.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "fcp/protos/confidentialcompute/sql_data_ingress_config.pb.h"
 #include "fcp/protos/confidentialcompute/sql_query.pb.h"
@@ -52,6 +54,7 @@ using ::absl_testing::StatusIs;
 using ::confidential_federated_compute::MockContext;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
+using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::
     SqlDataIngressContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::SqlQuery;
@@ -70,6 +73,20 @@ using ::testing::_;
 using ::testing::Eq;
 using ::testing::Return;
 using ::testing::StrictMock;
+
+// Sets `blob_id` in an authenticated BlobHeader in the associated data, as for
+// client uploads.
+void SetAuthenticatedBlobId(WriteRequest& request, absl::string_view blob_id) {
+  BlobHeader header;
+  header.set_blob_id(std::string(blob_id));
+  header.set_key_id("key_id");
+  auto* hpke_plus_aead_data =
+      request.mutable_first_request_metadata()->mutable_hpke_plus_aead_data();
+  hpke_plus_aead_data->set_blob_id(std::string(blob_id));
+  hpke_plus_aead_data->mutable_kms_symmetric_key_associated_data()
+      ->mutable_associated_metadata()
+      ->PackFrom(header);
+}
 
 Any CreateValidSqlConfig() {
   SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
@@ -226,14 +243,12 @@ TEST(SqlDataIngressFnCustomConfigTest,
   std::string checkpoint_str = std::move(checkpoint).value();
 
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
   StrictMock<MockContext> context;
   std::string emitted_data;
-  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_data](int, Session::KV kv) {
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_data](int, Session::KV kv, Any) {
         emitted_data = std::move(kv.data);
         EXPECT_EQ(kv.blob_id, "blob_id");
         return true;
@@ -283,14 +298,12 @@ TEST(SqlDataIngressFnCustomConfigTest,
   std::string checkpoint_str = std::move(checkpoint).value();
 
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
   StrictMock<MockContext> context;
   std::string emitted_data;
-  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_data](int, Session::KV kv) {
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_data](int, Session::KV kv, Any) {
         emitted_data = std::move(kv.data);
         EXPECT_EQ(kv.blob_id, "blob_id");
         return true;
@@ -320,23 +333,9 @@ TEST(SqlDataIngressFnCustomConfigTest,
 
 TEST_F(SqlDataIngressFnTest, InvalidCheckpointDataFails) {
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
   auto result = fn_->Write(request, "invalid_checkpoint_data", context_);
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
-TEST_F(SqlDataIngressFnTest, InputMissingBlobIdFails) {
-  auto checkpoint = CreateInputCheckpoint({"example1"});
-  ASSERT_THAT(checkpoint, IsOk());
-  std::string checkpoint_str = std::move(checkpoint).value();
-
-  WriteRequest request;
-  request.mutable_first_request_metadata()->mutable_hpke_plus_aead_data();
-
-  auto result = fn_->Write(request, checkpoint_str, context_);
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -354,11 +353,9 @@ TEST_F(SqlDataIngressFnTest, EmitEncryptedFails) {
   std::string checkpoint = std::string(ckpt->Flatten());
 
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _)).WillOnce(Return(false));
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _)).WillOnce(Return(false));
 
   auto result = fn_->Write(request, checkpoint, context_);
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
@@ -370,13 +367,11 @@ TEST_F(SqlDataIngressFnTest, EmitEncryptedCheckpointSucceeds) {
   std::string checkpoint_str = std::move(checkpoint).value();
 
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
   std::string emitted_data;
-  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_data](int, Session::KV kv) {
+  EXPECT_CALL(context_, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_data](int, Session::KV kv, Any) {
         emitted_data = std::move(kv.data);
         EXPECT_EQ(kv.blob_id, "blob_id");
         return true;
@@ -550,14 +545,12 @@ TEST(SqlDataIngressFnPrivateLoggerTest, EmitEncryptedCheckpointSucceeds) {
   ASSERT_THAT(checkpoint, IsOk());
 
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
   StrictMock<MockContext> context;
   std::string emitted_data;
-  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_data](int, Session::KV kv) {
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_data](int, Session::KV kv, Any) {
         emitted_data = std::move(kv.data);
         EXPECT_EQ(kv.blob_id, "blob_id");
         return true;
@@ -590,14 +583,12 @@ TEST(SqlDataIngressFnPrivateLoggerTest, EventTimeColumnIsQueryable) {
   ASSERT_THAT(checkpoint, IsOk());
 
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
   StrictMock<MockContext> context;
   std::string emitted_data;
-  EXPECT_CALL(context, EmitEncrypted(Eq(0), _))
-      .WillOnce([&emitted_data](int, Session::KV kv) {
+  EXPECT_CALL(context, EmitEncrypted(Eq(0), _, _))
+      .WillOnce([&emitted_data](int, Session::KV kv, Any) {
         emitted_data = std::move(kv.data);
         return true;
       });
@@ -626,9 +617,7 @@ TEST(SqlDataIngressFnPrivateLoggerTest, TensorCheckpointFails) {
   ASSERT_THAT(checkpoint, IsOk());
 
   WriteRequest request;
-  request.mutable_first_request_metadata()
-      ->mutable_hpke_plus_aead_data()
-      ->set_blob_id("blob_id");
+  SetAuthenticatedBlobId(request, "blob_id");
 
   StrictMock<MockContext> context;
   EXPECT_THAT((*fn)->Write(request, *checkpoint, context),

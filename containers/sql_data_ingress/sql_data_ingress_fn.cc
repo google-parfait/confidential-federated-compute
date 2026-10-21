@@ -140,10 +140,6 @@ absl::StatusOr<Input> SqlDataIngressDoFn::CreateInput(
 // level. If a single incoming input have data for multiple DP units and the SQL
 // query contains GROUP BY aggregation, the result could be incorrect.
 absl::Status SqlDataIngressDoFn::Do(KV input, DoContext& context) {
-  if (input.blob_id.empty()) {
-    return absl::InvalidArgumentError("Missing input blob id.");
-  }
-
   FederatedComputeCheckpointParserFactory parser_factory;
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<CheckpointParser> parser,
