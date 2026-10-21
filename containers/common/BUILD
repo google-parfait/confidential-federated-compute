@@ -21,11 +21,31 @@ package(
 
 cc_library(
     name = "privacy_id_utils",
+    srcs = ["privacy_id_utils.cc"],
     hdrs = ["privacy_id_utils.h"],
     deps = [
         "//containers:big_endian",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:any_cc_proto",
         "@federated_compute//fcp/base:digest",
+        "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:construct_user_session_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "privacy_id_utils_test",
+    size = "small",
+    srcs = ["privacy_id_utils_test.cc"],
+    deps = [
+        ":privacy_id_utils",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:any_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
+        "@federated_compute//fcp/protos/confidentialcompute:construct_user_session_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 

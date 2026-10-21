@@ -25,7 +25,7 @@
 
 namespace confidential_federated_compute {
 
-uint64_t swap(uint64_t x) {
+inline uint64_t swap(uint64_t x) {
 #if ABSL_HAVE_BUILTIN(__builtin_bswap64) || defined(__GNUC__)
   return __builtin_bswap64(x);
 #else
@@ -38,7 +38,7 @@ uint64_t swap(uint64_t x) {
 #endif
 }
 
-absl::uint128 swap(absl::uint128 x) {
+inline absl::uint128 swap(absl::uint128 x) {
   return absl::MakeUint128(swap(absl::Uint128Low64(x)),
                            swap(absl::Uint128High64(x)));
 }

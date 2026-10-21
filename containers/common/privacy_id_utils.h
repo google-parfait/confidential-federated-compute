@@ -16,11 +16,13 @@
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_COMMON_PRIVACY_ID_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
 #include "containers/big_endian.h"
 #include "fcp/base/digest.h"
+#include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 
 namespace confidential_federated_compute {
 
@@ -28,6 +30,12 @@ namespace confidential_federated_compute {
 inline uint64_t ComputeUpper64HashedPrivacyId(absl::string_view privacy_id) {
   return LoadBigEndian<uint64_t>(fcp::ComputeSHA256(std::string(privacy_id)));
 }
+
+// Returns the privacy ID from the first PrivacyIdMetadata entry in the given
+// protected metadata, or std::nullopt if there is no such entry. Entries that
+// can't be unpacked as a PrivacyIdMetadata are skipped.
+std::optional<std::string> GetPrivacyIdFromProtectedMetadata(
+    const fcp::confidentialcompute::ProtectedMetadata& protected_metadata);
 
 }  // namespace confidential_federated_compute
 
