@@ -170,25 +170,6 @@ TEST(CheckpointTest, PrivacyIdGetterSucceeds) {
   EXPECT_EQ(result->privacy_id(), "precise_user_id_42");
 }
 
-// Verifies that take_privacy_id_tensor() moves the tensor out and that the
-// returned tensor is a valid scalar DT_STRING tensor.
-TEST(CheckpointTest, TakePrivacyIdTensorMoveSemantics) {
-  std::vector<Tensor> tensors;
-  tensors.push_back(Tensor("user_to_move", kPrivacyIdColumnName));
-  tensors.push_back(Tensor({"2026-01-01T10:00:00+00:00"},
-                           "test_query/confidential_compute_event_time"));
-
-  InMemoryCheckpointParser parser(std::move(tensors));
-  auto result = Checkpoint::Create(parser, "test_query");
-  ASSERT_THAT(result, IsOk());
-
-  // Move the privacy ID tensor out.
-  Tensor moved_tensor = result->take_privacy_id_tensor();
-  EXPECT_TRUE(moved_tensor.is_scalar());
-  EXPECT_EQ(moved_tensor.dtype(), DataType::DT_STRING);
-  EXPECT_EQ(moved_tensor.AsScalar<absl::string_view>(), "user_to_move");
-}
-
 // Verifies that column_tensors() does not include the privacy ID tensor.
 TEST(CheckpointTest, ColumnTensorsExcludePrivacyId) {
   std::vector<Tensor> tensors;

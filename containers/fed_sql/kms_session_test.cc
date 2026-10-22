@@ -70,7 +70,6 @@ using ::confidential_federated_compute::fed_sql::testing::
 using ::confidential_federated_compute::fed_sql::testing::MessageHelper;
 using ::fcp::confidential_compute::EncryptMessageResult;
 using ::fcp::confidential_compute::kEventTimeColumnName;
-using ::fcp::confidential_compute::kPrivacyIdColumnName;
 using ::fcp::confidential_compute::MessageEncryptor;
 using ::fcp::confidentialcompute::AssociatedMetadata;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -364,6 +363,18 @@ TEST(KmsFedSqlSessionConfigureTest, AlreadyConfiguredFails) {
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
+// Bundles `checkpoint` with PrivacyIdMetadata protected metadata, as done for
+// session blobs emitted by construct_user_session.
+std::string BundleWithPrivacyId(std::string checkpoint,
+                                absl::string_view privacy_id) {
+  PrivacyIdMetadata privacy_id_metadata;
+  privacy_id_metadata.set_privacy_id(std::string(privacy_id));
+  ProtectedMetadata protected_metadata;
+  protected_metadata.add_metadata()->PackFrom(privacy_id_metadata);
+  return std::string(
+      BundleAny(protected_metadata, absl::Cord(std::move(checkpoint))));
+}
+
 class KmsFedSqlSessionWriteTest : public Test {
  public:
   KmsFedSqlSessionWriteTest(std::optional<uint32_t> default_budget = 5) {
@@ -625,9 +636,11 @@ TEST_F(KmsFedSqlSessionWriteTest,
        AccumulateCommitPartitionSucceedsWithTimeWindow) {
   // Create data with two different keys.
   std::string privacy_id1(16, '\x03');
-  std::string data1 = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id1);
+  std::string data1 =
+      BundleWithPrivacyId(BuildFedSqlGroupByCheckpoint({8}, {1}), privacy_id1);
   std::string privacy_id2(16, '\x04');
-  std::string data2 = BuildFedSqlGroupByCheckpoint({1003}, {2}, privacy_id2);
+  std::string data2 = BundleWithPrivacyId(
+      BuildFedSqlGroupByCheckpoint({1003}, {2}), privacy_id2);
 
   // Write inputs to the container with time windows.
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
@@ -1242,7 +1255,8 @@ TEST_F(KmsFedSqlSessionWriteTest,
        AccumulateWithTimeWindowAndExhaustedKeyBudgetFails) {
   // Use the default budget state which has key_baz with budget 0.
   std::string privacy_id(16, '\x01');
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
+  std::string data =
+      BundleWithPrivacyId(BuildFedSqlGroupByCheckpoint({8}, {1}), privacy_id);
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
@@ -1341,8 +1355,8 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateOfRepeatedBlobFails) {
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
-       AccumulateTimeWindowBlobMissingPrivacyIdTensorFails) {
-  // Use a checkpoint without privacy ID tensor.
+       AccumulateTimeWindowBlobMissingPrivacyIdMetadataFails) {
+  // Use a checkpoint without PrivacyIdMetadata protected metadata.
   std::string data = BuildFedSqlGroupByCheckpoint({8}, {1});
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
@@ -1359,16 +1373,17 @@ TEST_F(KmsFedSqlSessionWriteTest,
       MakeBlobMetadataWithTimeWindow(data, 1, start, end);
   auto write_result = session_->Write(write_request, data, context_);
   ASSERT_THAT(write_result, IsOk());
-  EXPECT_EQ(write_result->status().code(), Code::NOT_FOUND);
+  EXPECT_EQ(write_result->status().code(), Code::INVALID_ARGUMENT);
   EXPECT_THAT(write_result->status().message(),
-              HasSubstr("No aggregation tensor found for name "
-                        "confidential_compute_privacy_id"));
+              HasSubstr("Missing PrivacyIdMetadata"));
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, AccumulateTimeWindowDuplicatePrivacyIdFails) {
   std::string privacy_id(16, '\x02');
-  std::string data1 = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
-  std::string data2 = BuildFedSqlGroupByCheckpoint({9}, {2}, privacy_id);
+  std::string data1 =
+      BundleWithPrivacyId(BuildFedSqlGroupByCheckpoint({8}, {1}), privacy_id);
+  std::string data2 =
+      BundleWithPrivacyId(BuildFedSqlGroupByCheckpoint({9}, {2}), privacy_id);
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
@@ -1399,82 +1414,10 @@ TEST_F(KmsFedSqlSessionWriteTest, AccumulateTimeWindowDuplicatePrivacyIdFails) {
 }
 
 TEST_F(KmsFedSqlSessionWriteTest,
-       AccumulateTimeWindowBlobWithProtectedMetadataSucceeds) {
-  std::string privacy_id(16, '\x04');
-  // Session blobs from construct_user_session have ProtectedMetadata bundled
-  // with the checkpoint.
-  PrivacyIdMetadata privacy_id_metadata;
-  privacy_id_metadata.set_privacy_id(privacy_id);
-  ProtectedMetadata protected_metadata;
-  protected_metadata.add_metadata()->PackFrom(privacy_id_metadata);
-  std::string data = std::string(BundleAny(
-      protected_metadata,
-      absl::Cord(BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id))));
-  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
-    type: AGGREGATION_TYPE_ACCUMULATE
-  )pb");
-
-  google::protobuf::Timestamp start;
-  start.set_seconds(1000);
-  google::protobuf::Timestamp end;
-  end.set_seconds(2000);
-
-  WriteRequest write_request;
-  write_request.mutable_first_request_configuration()->PackFrom(config);
-  *write_request.mutable_first_request_metadata() =
-      MakeBlobMetadataWithTimeWindow(data, 1, start, end);
-  auto write_result = session_->Write(write_request, data, context_);
-  ASSERT_THAT(write_result, IsOk());
-  EXPECT_EQ(write_result->status().code(), Code::OK)
-      << write_result->status().message();
-}
-
-TEST_F(KmsFedSqlSessionWriteTest,
-       AccumulateTimeWindowUsesPrivacyIdFromProtectedMetadata) {
-  // Both blobs carry the same privacy ID in their protected metadata but
-  // different privacy ID tensors. The protected metadata takes precedence, so
-  // the second blob is rejected as a duplicate.
-  PrivacyIdMetadata privacy_id_metadata;
-  privacy_id_metadata.set_privacy_id(std::string(16, '\x05'));
-  ProtectedMetadata protected_metadata;
-  protected_metadata.add_metadata()->PackFrom(privacy_id_metadata);
-  std::string data1 = std::string(
-      BundleAny(protected_metadata, absl::Cord(BuildFedSqlGroupByCheckpoint(
-                                        {8}, {1}, std::string(16, '\x06')))));
-  std::string data2 = std::string(
-      BundleAny(protected_metadata, absl::Cord(BuildFedSqlGroupByCheckpoint(
-                                        {9}, {2}, std::string(16, '\x07')))));
-  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
-    type: AGGREGATION_TYPE_ACCUMULATE
-  )pb");
-
-  google::protobuf::Timestamp start;
-  start.set_seconds(1000);
-  google::protobuf::Timestamp end;
-  end.set_seconds(2000);
-
-  WriteRequest write_request1;
-  write_request1.mutable_first_request_configuration()->PackFrom(config);
-  *write_request1.mutable_first_request_metadata() =
-      MakeBlobMetadataWithTimeWindow(data1, 1, start, end);
-  auto write_result1 = session_->Write(write_request1, data1, context_);
-  ASSERT_THAT(write_result1, IsOk());
-  EXPECT_EQ(write_result1->status().code(), Code::OK)
-      << write_result1->status().message();
-
-  WriteRequest write_request2;
-  write_request2.mutable_first_request_configuration()->PackFrom(config);
-  *write_request2.mutable_first_request_metadata() =
-      MakeBlobMetadataWithTimeWindow(data2, 2, start, end);
-  EXPECT_THAT(session_->Write(write_request2, data2, context_),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("duplicate ID")));
-}
-
-TEST_F(KmsFedSqlSessionWriteTest,
        CommitTimeWindowBlobPrivacyIdOutOfRangeFails) {
   std::string privacy_id(16, '\x03');
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
+  std::string data =
+      BundleWithPrivacyId(BuildFedSqlGroupByCheckpoint({8}, {1}), privacy_id);
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");
@@ -2288,7 +2231,8 @@ TEST_F(KmsFedSqlSessionWriteTest,
 TEST_F(KmsFedSqlSessionWriteTest,
        AccumulateTimeWindowBudgetThenLegacyBlobDies) {
   std::string privacy_id(16, '\xa0');
-  std::string data = BuildFedSqlGroupByCheckpoint({8}, {1}, privacy_id);
+  std::string data =
+      BundleWithPrivacyId(BuildFedSqlGroupByCheckpoint({8}, {1}), privacy_id);
   FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
     type: AGGREGATION_TYPE_ACCUMULATE
   )pb");

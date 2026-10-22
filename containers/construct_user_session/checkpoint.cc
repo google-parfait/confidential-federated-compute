@@ -43,10 +43,6 @@ absl::string_view Checkpoint::privacy_id() const {
   return privacy_id_tensor_.AsScalar<absl::string_view>();
 }
 
-Tensor Checkpoint::take_privacy_id_tensor() {
-  return std::move(privacy_id_tensor_);
-}
-
 const absl::flat_hash_map<std::string, Tensor>& Checkpoint::column_tensors()
     const {
   return column_tensors_;

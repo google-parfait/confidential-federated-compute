@@ -129,10 +129,8 @@ class ConstructUserSessionFn final : public fns::BatchDoFn {
   IngestionResult IngestAndGroupCheckpoints(
       std::vector<Element> accumulated_inputs, DoContext& context);
 
-  // Builds serialized session output from `privacy_id_tensor` and
-  // `output_tensors`.
+  // Builds serialized session output from `output_tensors`.
   std::string BuildSessionOutput(
-      Tensor privacy_id_tensor,
       absl::flat_hash_map<std::string, Tensor> output_tensors);
 
   // Emits the serialized session output encrypted.
@@ -165,9 +163,7 @@ absl::Status ConstructUserSessionFn::Do(google::protobuf::Any config,
       continue;
     }
 
-    std::string output_data =
-        BuildSessionOutput(group.checkpoints[0].take_privacy_id_tensor(),
-                           std::move(output_tensors));
+    std::string output_data = BuildSessionOutput(std::move(output_tensors));
 
     // Return if there's a fatal failure that should abort the pipeline.
     ABSL_RETURN_IF_ERROR(EmitSessionOutput(std::move(output_data), privacy_id,
@@ -240,16 +236,12 @@ IngestionResult ConstructUserSessionFn::IngestAndGroupCheckpoints(
 }
 
 std::string ConstructUserSessionFn::BuildSessionOutput(
-    Tensor privacy_id_tensor,
     absl::flat_hash_map<std::string, Tensor> output_tensors) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> builder = builder_factory.Create();
 
-  // Add the privacy ID scalar tensor.
-  CHECK_OK(builder->Add(fcp::confidential_compute::kPrivacyIdColumnName,
-                        std::move(privacy_id_tensor)));
-
-  // Add all output tensors.
+  // Add all output tensors. The privacy ID is not included; it is attached to
+  // the output as PrivacyIdMetadata protected metadata instead.
   for (auto& [name, tensor] : output_tensors) {
     CHECK_OK(builder->Add(name, std::move(tensor)));
   }
@@ -272,8 +264,6 @@ absl::Status ConstructUserSessionFn::EmitSessionOutput(
 
   context.associated_metadata().Pack(time_window_metadata);
 
-  // The privacy ID is also kept in the session checkpoint's privacy ID tensor
-  // for downstream containers that read it from there.
   fcp::confidentialcompute::PrivacyIdMetadata privacy_id_metadata;
   privacy_id_metadata.set_privacy_id(privacy_id);
   context.protected_metadata().Pack(privacy_id_metadata);
