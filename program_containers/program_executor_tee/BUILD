@@ -263,6 +263,9 @@ trusted_py_runtime(
         # Needed by jax.export to (de)serialize exported functions, e.g. models
         # sideloaded into programs.
         "@pypi//flatbuffers",
+        # Needed to save and restore model parameters (pytrees of arrays) as
+        # Orbax checkpoints, e.g. weights sideloaded into programs.
+        "@pypi//orbax_checkpoint",
     ],
     source_repo_names = [
         "federated_language",
