@@ -33,9 +33,10 @@
 #include "absl/strings/string_view.h"
 #include "budget.h"
 #include "containers/common/intervals/interval.h"
+#include "containers/common/privacy_id_utils.h"
 #include "containers/common/time_budget/budget.pb.h"
-#include "containers/fns/batch_do_fn.h"
 #include "containers/fns/fn_factory.h"
+#include "containers/fns/global_reduce_fn.h"
 #include "fcp/confidentialcompute/private_state.h"
 #include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/construct_user_session.pb.h"
@@ -60,9 +61,9 @@ namespace {
 
 constexpr absl::string_view kDataTensorName = "data";
 
-using ::confidential_federated_compute::fns::BatchDoFn;
 using ::confidential_federated_compute::fns::Fn;
 using ::confidential_federated_compute::fns::FnFactory;
+using ::confidential_federated_compute::fns::GlobalReduceFn;
 using ::confidential_federated_compute::fns::WriteConfigurationMap;
 using ::fcp::confidential_compute::kPrivateStateConfigId;
 using ::fcp::confidentialcompute::BlobHeader;
@@ -70,7 +71,6 @@ using ::fcp::confidentialcompute::Embedding;
 using ::fcp::confidentialcompute::MauveScoreContainerConfigConstraints;
 using ::fcp::confidentialcompute::MauveScoreContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::MauveScoreResult;
-using ::fcp::confidentialcompute::PrivacyIdMetadata;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::google::protobuf::Any;
 using ::tensorflow_federated::aggregation::DT_FLOAT;
@@ -85,7 +85,13 @@ struct BudgetKey {
   std::optional<Interval<uint64_t>> agg_window;
 };
 
-bool HasTimeWindowMetadata(const BatchDoFn::Element& input) {
+// Inputs with remaining budget, along with the budget key to charge for them.
+struct BudgetedInputs {
+  std::vector<Session::KV> inputs;
+  BudgetKey budget_key;
+};
+
+bool HasTimeWindowMetadata(const GlobalReduceFn::Element& input) {
   for (const auto& entry : input.associated_metadata.metadata()) {
     if (entry.Is<SessionTimeWindowMetadata>()) {
       return true;
@@ -94,44 +100,23 @@ bool HasTimeWindowMetadata(const BatchDoFn::Element& input) {
   return false;
 }
 
-// Returns the privacy ID from the input's PrivacyIdMetadata protected metadata,
-// or std::nullopt if the input has none.
-std::optional<std::string> GetPrivacyId(const BatchDoFn::Element& input) {
-  for (const auto& entry : input.protected_metadata.metadata()) {
-    PrivacyIdMetadata privacy_id_metadata;
-    if (entry.UnpackTo(&privacy_id_metadata)) {
-      return privacy_id_metadata.privacy_id();
-    }
-  }
-  return std::nullopt;
-}
-
-// Checks that no two inputs come from the same user. If the first input has
-// PrivacyIdMetadata, uniqueness is checked by privacy ID and every input must
-// have one. Otherwise, uniqueness is checked by blob ID.
-absl::Status CheckForDuplicates(const std::vector<BatchDoFn::Element>& inputs) {
-  absl::flat_hash_set<std::string> seen_ids;
-  const bool use_privacy_id = GetPrivacyId(inputs.front()).has_value();
-  if (use_privacy_id) {
-    for (const BatchDoFn::Element& input : inputs) {
-      std::optional<std::string> privacy_id = GetPrivacyId(input);
-      if (!privacy_id.has_value()) {
-        return absl::InvalidArgumentError("Missing PrivacyIdMetadata.");
-      }
-      if (!seen_ids.insert(*std::move(privacy_id)).second) {
-        // The privacy ID itself is sensitive, so it isn't included.
-        return absl::InvalidArgumentError("Duplicate privacy id detected.");
-      }
-    }
+// Checks that no two inputs without a privacy ID share a blob ID. Inputs with a
+// privacy ID have already been deduplicated by privacy ID by GlobalReduceFn,
+// which also requires either all inputs or none of them to have one.
+absl::Status CheckForDuplicateBlobIds(
+    const std::vector<GlobalReduceFn::Element>& inputs) {
+  if (GetPrivacyIdFromProtectedMetadata(inputs.front().protected_metadata)
+          .has_value()) {
     return absl::OkStatus();
   }
 
-  for (const BatchDoFn::Element& input : inputs) {
+  absl::flat_hash_set<std::string> seen_blob_ids;
+  for (const GlobalReduceFn::Element& input : inputs) {
     // An empty blob ID means the input has no authenticated blob ID.
     if (input.kv.blob_id.empty()) {
       return absl::InvalidArgumentError("Missing authenticated blob id.");
     }
-    if (!seen_ids.insert(input.kv.blob_id).second) {
+    if (!seen_blob_ids.insert(input.kv.blob_id).second) {
       return absl::InvalidArgumentError(
           absl::StrCat("Duplicate blob id detected: ", input.kv.blob_id));
     }
@@ -139,22 +124,23 @@ absl::Status CheckForDuplicates(const std::vector<BatchDoFn::Element>& inputs) {
   return absl::OkStatus();
 }
 
-// MauveScoreFn extends BatchDoFn to compute the MAUVE score over
-// accumulated real embeddings.
+// MauveScoreFn extends GlobalReduceFn to compute the MAUVE score over all real
+// embeddings.
 //
 // Data flow:
 //   stream_init: Synthetic embeddings & initial pipeline state loaded via
 //                WriteConfigurationMap → held by factory → passed to
 //                constructor
-//   Write() (BatchDoFn): Accumulates raw checkpoint blobs
-//   Commit() (BatchDoFn): Calls Do() with all accumulated blobs
-//   Do(): Parses all checkpoints → checks for duplicate privacy IDs (or
-//         blob IDs if the inputs have no privacy IDs) →
-//         validates and updates budget → computes MAUVE → stores result for
-//         FinalizeReplica
-//   FinalizeReplica(): Emits the stored result via EmitReleasable with
-//                      budget state tracking
-class MauveScoreFn : public BatchDoFn {
+//   Write() (GlobalReduceFn): Rejects duplicate privacy IDs and buffers raw
+//                             checkpoint blobs
+//   Commit() (GlobalReduceFn): Records that all blobs have been written
+//   Finalize() (GlobalReduceFn): Calls Reduce() with all buffered blobs and
+//                                releases the result via EmitReleasable
+//   Reduce(): Checks for duplicate blob IDs if the inputs have no privacy
+//             IDs → filters blobs by budget → parses checkpoints → computes
+//             MAUVE → updates budget → returns the result along with the
+//             budget state transition
+class MauveScoreFn : public GlobalReduceFn {
  public:
   static absl::StatusOr<std::unique_ptr<MauveScoreFn>> Create(
       const std::vector<Embedding>& synthetic_data_embeddings,
@@ -162,10 +148,8 @@ class MauveScoreFn : public BatchDoFn {
       std::optional<std::string> initial_pipeline_state,
       ComputeMauveFn compute_mauve_fn);
 
-  absl::Status Do(Any config, std::vector<Element> accumulated_inputs,
-                  DoContext& context) override;
-
-  absl::Status FinalizeReplica(Any config, FnContext& context) override;
+  absl::StatusOr<ReleasableOutput> Reduce(
+      std::vector<Element> accumulated_inputs, ReduceContext& context) override;
 
  private:
   MauveScoreFn(const std::vector<Embedding>& synthetic_data_embeddings,
@@ -176,19 +160,15 @@ class MauveScoreFn : public BatchDoFn {
         min_agg_window_minutes_(min_agg_window_minutes),
         compute_mauve_fn_(std::move(compute_mauve_fn)) {}
 
-  absl::StatusOr<std::vector<Session::KV>>
-  FilterInputsWithRemainingTimeWindowBudget(
-      std::vector<Element> accumulated_inputs, DoContext& context);
-  absl::StatusOr<std::vector<Session::KV>> FilterInputsWithRemainingKeyIdBudget(
-      std::vector<Element> accumulated_inputs, DoContext& context);
+  absl::StatusOr<BudgetedInputs> FilterInputsWithRemainingTimeWindowBudget(
+      std::vector<Element> accumulated_inputs, ReduceContext& context);
+  absl::StatusOr<BudgetedInputs> FilterInputsWithRemainingKeyIdBudget(
+      std::vector<Element> accumulated_inputs, ReduceContext& context);
 
   const std::vector<Embedding>& synthetic_data_embeddings_;
   Budget budget_;
   const uint64_t min_agg_window_minutes_;
   ComputeMauveFn compute_mauve_fn_;
-  // Stored result from Do(), to be emitted in FinalizeReplica().
-  std::string serialized_result_;
-  BudgetKey budget_key_;
 };
 
 class MauveScoreFnFactory : public FnFactory {
@@ -231,9 +211,9 @@ absl::StatusOr<std::unique_ptr<MauveScoreFn>> MauveScoreFn::Create(
                        min_agg_window_minutes, std::move(compute_mauve_fn)));
 }
 
-absl::StatusOr<std::vector<Session::KV>>
+absl::StatusOr<BudgetedInputs>
 MauveScoreFn::FilterInputsWithRemainingTimeWindowBudget(
-    std::vector<Element> accumulated_inputs, DoContext& context) {
+    std::vector<Element> accumulated_inputs, ReduceContext& context) {
   std::optional<Interval<uint64_t>> agg_window;
   std::vector<Session::KV> valid_inputs;
 
@@ -289,13 +269,15 @@ MauveScoreFn::FilterInputsWithRemainingTimeWindowBudget(
         min_agg_window_minutes_, " minutes)."));
   }
 
-  budget_key_.agg_window = agg_window;
-  return valid_inputs;
+  BudgetedInputs budgeted_inputs;
+  budgeted_inputs.inputs = std::move(valid_inputs);
+  budgeted_inputs.budget_key.agg_window = agg_window;
+  return budgeted_inputs;
 }
 
-absl::StatusOr<std::vector<Session::KV>>
+absl::StatusOr<BudgetedInputs>
 MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
-    std::vector<Element> accumulated_inputs, DoContext& context) {
+    std::vector<Element> accumulated_inputs, ReduceContext& context) {
   absl::flat_hash_set<std::string> active_keys;
   std::vector<Session::KV> valid_inputs;
 
@@ -328,33 +310,34 @@ MauveScoreFn::FilterInputsWithRemainingKeyIdBudget(
         "budget.");
   }
 
-  budget_key_.active_keys = std::move(active_keys);
-  return valid_inputs;
+  BudgetedInputs budgeted_inputs;
+  budgeted_inputs.inputs = std::move(valid_inputs);
+  budgeted_inputs.budget_key.active_keys = std::move(active_keys);
+  return budgeted_inputs;
 }
 
-absl::Status MauveScoreFn::Do(Any config,
-                              std::vector<Element> accumulated_inputs,
-                              DoContext& context) {
+absl::StatusOr<GlobalReduceFn::ReleasableOutput> MauveScoreFn::Reduce(
+    std::vector<Element> accumulated_inputs, ReduceContext& context) {
   if (accumulated_inputs.empty()) {
     return absl::InvalidArgumentError("No real embeddings received.");
   }
 
-  // Phase 0: Check for duplicate privacy IDs, or blob IDs if the inputs have
-  // no privacy IDs.
-  ABSL_RETURN_IF_ERROR(CheckForDuplicates(accumulated_inputs));
+  // Phase 0: Check for duplicate blob IDs if the inputs have no privacy IDs.
+  // GlobalReduceFn has already rejected duplicate privacy IDs.
+  ABSL_RETURN_IF_ERROR(CheckForDuplicateBlobIds(accumulated_inputs));
 
   if (synthetic_data_embeddings_.empty()) {
     return absl::InvalidArgumentError("No synthetic embeddings loaded.");
   }
 
-  // Phase 1: Filter blobs by budget and update budget state.
-  std::vector<Session::KV> valid_inputs;
+  // Phase 1: Filter blobs by budget.
+  BudgetedInputs budgeted_inputs;
   if (HasTimeWindowMetadata(accumulated_inputs.front())) {
-    ABSL_ASSIGN_OR_RETURN(valid_inputs,
+    ABSL_ASSIGN_OR_RETURN(budgeted_inputs,
                           FilterInputsWithRemainingTimeWindowBudget(
                               std::move(accumulated_inputs), context));
   } else {
-    ABSL_ASSIGN_OR_RETURN(valid_inputs,
+    ABSL_ASSIGN_OR_RETURN(budgeted_inputs,
                           FilterInputsWithRemainingKeyIdBudget(
                               std::move(accumulated_inputs), context));
   }
@@ -375,7 +358,7 @@ absl::Status MauveScoreFn::Do(Any config,
 
   // Phase 2: Parse valid checkpoint blobs into flat float vectors.
   std::vector<std::vector<float>> real_embeddings;
-  for (auto& kv : valid_inputs) {
+  for (auto& kv : budgeted_inputs.inputs) {
     FederatedComputeCheckpointParserFactory parser_factory;
     ABSL_ASSIGN_OR_RETURN(
         auto parser, parser_factory.Create(absl::Cord(std::move(kv.data))));
@@ -434,41 +417,26 @@ absl::Status MauveScoreFn::Do(Any config,
             << ", recall: " << result.recall()
             << ", precision: " << result.precision();
 
-  // Phase 5: Store the serialized result for FinalizeReplica.
-  serialized_result_ = result.SerializeAsString();
-
   context.IncrementCounter("mauve-score-computed");
   context.IncrementCounterBy("mauve-real-embeddings-count",
                              real_embeddings.size());
   context.IncrementCounterBy("mauve-synth-embeddings-count",
                              synthetic_data_embeddings_.size());
 
-  return absl::OkStatus();
-}
-
-absl::Status MauveScoreFn::FinalizeReplica(Any config, FnContext& context) {
-  if (serialized_result_.empty()) {
-    return absl::FailedPreconditionError(
-        "No MAUVE result available. Was Do() called successfully?");
-  }
-
-  if (budget_key_.agg_window.has_value()) {
-    ABSL_RETURN_IF_ERROR(budget_.UpdateTimeBudget(*budget_key_.agg_window));
+  // Phase 5: Update the budget of the inputs that the result was computed
+  // from.
+  const BudgetKey& budget_key = budgeted_inputs.budget_key;
+  if (budget_key.agg_window.has_value()) {
+    ABSL_RETURN_IF_ERROR(budget_.UpdateTimeBudget(*budget_key.agg_window));
   } else {
-    ABSL_RETURN_IF_ERROR(budget_.UpdatePerKeyBudget(budget_key_.active_keys));
+    ABSL_RETURN_IF_ERROR(budget_.UpdatePerKeyBudget(budget_key.active_keys));
   }
 
-  // Compute the destination state.
-  std::string dst_state = budget_.SerializeAsString();
-
-  // Emit the result via EmitReleasable.
-  if (!context.EmitReleasable(/*reencryption_key_index=*/0,
-                              Session::KV(std::move(serialized_result_)),
-                              budget_.GetInitialState(), dst_state)) {
-    return absl::InternalError("Failed to emit MAUVE score result.");
-  }
-
-  return absl::OkStatus();
+  // Phase 6: Return the result along with the budget state transition.
+  // GlobalReduceFn releases it.
+  return ReleasableOutput{.kv = Session::KV(result.SerializeAsString()),
+                          .src_state = budget_.GetInitialState(),
+                          .dst_state = budget_.SerializeAsString()};
 }
 
 }  // anonymous namespace

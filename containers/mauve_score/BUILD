@@ -152,6 +152,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:any_cc_proto",
         "@confidential-federated-compute//containers:session",
+        "@confidential-federated-compute//containers/common:privacy_id_utils",
         "@confidential-federated-compute//containers/common/intervals:interval",
         "@confidential-federated-compute//containers/common/time_budget:budget_cc_proto",
         "@confidential-federated-compute//containers/fns:fns",
@@ -183,10 +184,6 @@ cc_binary(
 cc_test(
     name = "mauve_score_fn_test",
     srcs = ["mauve_score_fn_test.cc"],
-    args = [
-        # FullLifecycleSuccess requires a Python runtime with the MAUVE library.
-        "--gtest_filter=-MauveScoreFnTest.FullLifecycleSuccess",
-    ],
     deps = [
         ":budget",
         ":mauve_score_fn",
