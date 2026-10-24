@@ -96,7 +96,22 @@ python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
     configure_coverage_tool = False,
     ignore_root_user_error = True,
-    python_version = "3.11",
+    python_version = "3.13",
+)
+
+# Use the stripped python-build-standalone build. The default build ships a
+# ~250 MB libpython with debug info, and the container image would carry two
+# copies of it (libpython3.13.so and libpython3.13.so.1.0 in _solib_k8). Keep
+# the minor_mapping, the version and the URL in sync when upgrading Python.
+python.override(
+    minor_mapping = {"3.13": "3.13.13"},
+)
+python.single_version_platform_override(
+    platform = "x86_64-unknown-linux-gnu",
+    python_version = "3.13.13",
+    sha256 = "13d3b6d15f4c3c1dd1955a3c81e06bdc5aef4cb5cb65076878374948be3b0412",
+    strip_prefix = "python",
+    urls = ["https://github.com/astral-sh/python-build-standalone/releases/download/20260414/cpython-3.13.13+20260414-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"],
 )
 
 # Set up cc toolchain
@@ -116,20 +131,21 @@ register_toolchains("@llvm_toolchain//:all")
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
-    name = "python_3_11_slim_bookworm",
-    digest = "sha256:838ff46ae6c481e85e369706fa3dea5166953824124735639f3c9f52af85f319",
+    name = "python_3_13_slim_bookworm",
+    digest = "sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530",
     image = "python",
     platforms = ["linux/amd64"],
 )
-use_repo(oci, "python_3_11_slim_bookworm", "python_3_11_slim_bookworm_linux_amd64")
+use_repo(oci, "python_3_13_slim_bookworm", "python_3_13_slim_bookworm_linux_amd64")
 
 # Define the PIP deps we need from the requirements.in file.
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
-    # Use pypi downloader, the default uses Gcloud artifact registry which requires gcloud keyring.
-    experimental_index_url = "https://pypi.org/simple",
+    experimental_extra_index_urls = ["https://pypi.org/simple"],
+    # Pull CPU-only PyTorch wheels first to avoid ~6 GB of unused CUDA/Triton deps.
+    experimental_index_url = "https://download.pytorch.org/whl/cpu",
     hub_name = "pip",
-    python_version = "3.11",
+    python_version = "3.13",
     requirements_lock = "//:requirements_lock.txt",
 )
 use_repo(pip, "pip")

@@ -2977,37 +2977,37 @@
     "@@rules_oci+//oci:extensions.bzl%oci": {
       "general": {
         "bzlTransitiveDigest": "KWBmJgkgKGIsau0tywdMgpQ1EdJSxmvOaid4iSGlBtg=",
-        "usagesDigest": "AgomuZzyAZPIlwMAnY0khwe0bZTaIzHJvSMus3oGJ0o=",
+        "usagesDigest": "PPdqc7EL/OFcal1KToNXwba3F3bJ0qZzKwNb2OZNdww=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
-          "python_3_11_slim_bookworm_linux_amd64": {
+          "python_3_13_slim_bookworm_linux_amd64": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_pull",
             "attributes": {
               "www_authenticate_challenges": {},
               "scheme": "https",
               "registry": "index.docker.io",
               "repository": "library/python",
-              "identifier": "sha256:838ff46ae6c481e85e369706fa3dea5166953824124735639f3c9f52af85f319",
+              "identifier": "sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530",
               "platform": "linux/amd64",
-              "target_name": "python_3_11_slim_bookworm_linux_amd64",
+              "target_name": "python_3_13_slim_bookworm_linux_amd64",
               "bazel_tags": []
             }
           },
-          "python_3_11_slim_bookworm": {
+          "python_3_13_slim_bookworm": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_alias",
             "attributes": {
-              "target_name": "python_3_11_slim_bookworm",
+              "target_name": "python_3_13_slim_bookworm",
               "www_authenticate_challenges": {},
               "scheme": "https",
               "registry": "index.docker.io",
               "repository": "library/python",
-              "identifier": "sha256:838ff46ae6c481e85e369706fa3dea5166953824124735639f3c9f52af85f319",
+              "identifier": "sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530",
               "platforms": {
-                "@@platforms//cpu:x86_64": "@python_3_11_slim_bookworm_linux_amd64"
+                "@@platforms//cpu:x86_64": "@python_3_13_slim_bookworm_linux_amd64"
               },
-              "bzlmod_repository": "python_3_11_slim_bookworm",
+              "bzlmod_repository": "python_3_13_slim_bookworm",
               "reproducible": true
             }
           },
@@ -3127,8 +3127,8 @@
         },
         "moduleExtensionMetadata": {
           "explicitRootModuleDirectDeps": [
-            "python_3_11_slim_bookworm",
-            "python_3_11_slim_bookworm_linux_amd64"
+            "python_3_13_slim_bookworm",
+            "python_3_13_slim_bookworm_linux_amd64"
           ],
           "explicitRootModuleDirectDevDeps": [],
           "useAllRepos": "NO",

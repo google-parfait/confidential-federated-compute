@@ -227,7 +227,7 @@ gen_python_path(
 
 oci_image(
     name = "oci_image",
-    base = "@python_3_11_slim_bookworm_linux_amd64",
+    base = "@python_3_13_slim_bookworm_linux_amd64",
     entrypoint = ["/main"],
     env = ":py_path",
     tars = [":tar"],
