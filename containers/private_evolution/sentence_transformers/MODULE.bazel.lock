@@ -2966,37 +2966,37 @@
     "@@rules_oci+//oci:extensions.bzl%oci": {
       "general": {
         "bzlTransitiveDigest": "KWBmJgkgKGIsau0tywdMgpQ1EdJSxmvOaid4iSGlBtg=",
-        "usagesDigest": "VTyXvQrT94dPZIYp/FjHFrxbcSU6SQ2QVwyjbXyh3jY=",
+        "usagesDigest": "5QtGVxDQQqxDCQ+0MptrJ885rU+p/bfYIcj8askJfXI=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
-          "python_3_13_slim_bookworm_linux_amd64": {
+          "distroless_cc_debian12_base_linux_amd64": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_pull",
             "attributes": {
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "index.docker.io",
-              "repository": "library/python",
-              "identifier": "sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530",
+              "registry": "gcr.io",
+              "repository": "distroless/cc-debian12",
+              "identifier": "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
               "platform": "linux/amd64",
-              "target_name": "python_3_13_slim_bookworm_linux_amd64",
+              "target_name": "distroless_cc_debian12_base_linux_amd64",
               "bazel_tags": []
             }
           },
-          "python_3_13_slim_bookworm": {
+          "distroless_cc_debian12_base": {
             "repoRuleId": "@@rules_oci+//oci/private:pull.bzl%oci_alias",
             "attributes": {
-              "target_name": "python_3_13_slim_bookworm",
+              "target_name": "distroless_cc_debian12_base",
               "www_authenticate_challenges": {},
               "scheme": "https",
-              "registry": "index.docker.io",
-              "repository": "library/python",
-              "identifier": "sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530",
+              "registry": "gcr.io",
+              "repository": "distroless/cc-debian12",
+              "identifier": "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
               "platforms": {
-                "@@platforms//cpu:x86_64": "@python_3_13_slim_bookworm_linux_amd64"
+                "@@platforms//cpu:x86_64": "@distroless_cc_debian12_base_linux_amd64"
               },
-              "bzlmod_repository": "python_3_13_slim_bookworm",
+              "bzlmod_repository": "distroless_cc_debian12_base",
               "reproducible": true
             }
           },
@@ -3116,8 +3116,8 @@
         },
         "moduleExtensionMetadata": {
           "explicitRootModuleDirectDeps": [
-            "python_3_13_slim_bookworm",
-            "python_3_13_slim_bookworm_linux_amd64"
+            "distroless_cc_debian12_base",
+            "distroless_cc_debian12_base_linux_amd64"
           ],
           "explicitRootModuleDirectDevDeps": [],
           "useAllRepos": "NO",

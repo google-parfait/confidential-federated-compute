@@ -14,9 +14,7 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PRIVATE_EVOLUTION_SENTENCE_TRANSFORMERS_PY_MODEL_DELEGATE_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_PRIVATE_EVOLUTION_SENTENCE_TRANSFORMERS_PY_MODEL_DELEGATE_H_
 
-#include <pybind11/embed.h>
-#include <pybind11/stl.h>
-
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -25,6 +23,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "containers/python/embedded_python.h"
 #include "model_delegate.h"
 
 namespace confidential_federated_compute::sentence_transformers {
@@ -40,7 +39,8 @@ class PyModelDelegate : public ModelDelegate {
 
 // Factory class for creating ModelDelegate.
 // This class also initialize/finalize the python interpreter, and loading
-// python libraries.
+// python libraries. Create it on the main thread before starting the gRPC
+// server. The binary must link the embedded_python_env target :py_env.
 class PyRuntimeManager : public ModelDelegateFactory {
  public:
   PyRuntimeManager();
@@ -49,14 +49,15 @@ class PyRuntimeManager : public ModelDelegateFactory {
   // This method should be called before any method of PyModelDelegate is
   // called. Once the libraries are imported, the result will be cached so
   // subsequent import calls are lightweight. This method should run on the main
-  // thread, it might fail on gRPC worker thread.
+  // thread at startup: some Python libraries can only be imported on the main
+  // thread, for example ones that install signal handlers.
   absl::Status ImportLib();
   std::unique_ptr<ModelDelegate> Create() override {
     return std::make_unique<PyModelDelegate>();
   }
 
  private:
-  PyThreadState* tstate_;
+  std::unique_ptr<python::EmbeddedInterpreter> interpreter_;
 };
 
 }  // namespace confidential_federated_compute::sentence_transformers

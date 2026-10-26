@@ -16,10 +16,13 @@
 #include <pybind11/embed.h>
 #include <pybind11/stl.h>
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,16 +32,17 @@
 namespace confidential_federated_compute::sentence_transformers {
 
 PyRuntimeManager::PyRuntimeManager() {
-  pybind11::initialize_interpreter();
-  // Release GIL, so other thread can hold the GIL.
-  tstate_ = PyEval_SaveThread();
+  // Initializes the hermetic interpreter from the binary's runfiles. It
+  // returns with the GIL released, so that gRPC worker threads can acquire it.
+  absl::StatusOr<std::unique_ptr<python::EmbeddedInterpreter>> interpreter =
+      python::EmbeddedInterpreter::Create();
+  CHECK_OK(interpreter);
+  interpreter_ = *std::move(interpreter);
   LOG(INFO) << "Interpreter initialized.";
 }
 
 PyRuntimeManager::~PyRuntimeManager() {
-  // Restore thread state before finalization.
-  PyEval_RestoreThread(tstate_);
-  pybind11::finalize_interpreter();
+  interpreter_.reset();
   LOG(INFO) << "Interpreter finalized.";
 }
 

@@ -18,9 +18,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -55,15 +58,17 @@ absl::StatusOr<pybind11::bytes> FlattenToBytes(
 }  // namespace
 
 PyRuntimeManager::PyRuntimeManager() {
-  pybind11::initialize_interpreter();
-  // Release GIL so gRPC worker threads can acquire it.
-  tstate_ = PyEval_SaveThread();
+  // Initializes the hermetic interpreter from the binary's runfiles. It
+  // returns with the GIL released, so that gRPC worker threads can acquire it.
+  absl::StatusOr<std::unique_ptr<python::EmbeddedInterpreter>> interpreter =
+      python::EmbeddedInterpreter::Create();
+  CHECK_OK(interpreter);
+  interpreter_ = *std::move(interpreter);
   LOG(INFO) << "Python interpreter initialized.";
 }
 
 PyRuntimeManager::~PyRuntimeManager() {
-  PyEval_RestoreThread(tstate_);
-  pybind11::finalize_interpreter();
+  interpreter_.reset();
   LOG(INFO) << "Python interpreter finalized.";
 }
 

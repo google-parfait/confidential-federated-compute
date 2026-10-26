@@ -41,6 +41,7 @@ class ModelDelegate {
 // Factory class for creating ModelDelegate.
 class ModelDelegateFactory {
  public:
+  virtual ~ModelDelegateFactory() = default;
   virtual std::unique_ptr<ModelDelegate> Create() = 0;
 };
 
