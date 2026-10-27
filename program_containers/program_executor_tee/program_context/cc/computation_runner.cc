@@ -23,10 +23,8 @@
 #include "cc/ffi/bytes_view.h"
 #include "cc/ffi/error_bindings.h"
 #include "cc/oak_session/config.h"
-#include "fcp/base/status_converters.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.grpc.pb.h"
 #include "fcp/protos/confidentialcompute/computation_delegation.pb.h"
-#include "fcp/protos/confidentialcompute/tff_config.pb.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
 #include "program_executor_tee/program_context/cc/elastic_composing_executor.h"
@@ -46,11 +44,7 @@ namespace {
 namespace ffi_bindings = ::oak::ffi::bindings;
 namespace bindings = ::oak::session::bindings;
 
-using ::fcp::base::ToGrpcStatus;
-using ::fcp::confidentialcompute::TffSessionConfig;
 using ::fcp::confidentialcompute::outgoing::ComputationDelegation;
-using ::fcp::confidentialcompute::outgoing::ComputationRequest;
-using ::fcp::confidentialcompute::outgoing::ComputationResponse;
 using ::oak::session::AttestationType;
 using ::oak::session::HandshakeType;
 using ::oak::session::SessionConfig;
@@ -119,6 +113,8 @@ absl::StatusOr<tensorflow_federated::v0::Value> ExecuteInternal(
   if (arg.has_value()) {
     ABSL_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId arg_handle,
                           executor->CreateValue(*arg));
+    // The executor has its own copy now, so free this one to lower peak memory.
+    arg.reset();
     ABSL_ASSIGN_OR_RETURN(tensorflow_federated::OwnedValueId call_handle,
                           executor->CreateCall(fn_handle, arg_handle));
     ABSL_RETURN_IF_ERROR(executor->Materialize(call_handle, &call_result));
@@ -232,17 +228,10 @@ ComputationRunner::CreateDistributedExecutor(
   }
 }
 
-grpc::Status ComputationRunner::Execute(
-    ::grpc::ServerContext* context,
-    const ::fcp::confidentialcompute::outgoing::ComputationRequest* request,
-    ::fcp::confidentialcompute::outgoing::ComputationResponse* response) {
-  TffSessionConfig session_request;
-  if (!request->computation().UnpackTo(&session_request)) {
-    return grpc::Status(
-        grpc::StatusCode::INVALID_ARGUMENT,
-        "ComputationRequest cannot be unpacked to TffSessionConfig.");
-  }
-
+absl::StatusOr<tensorflow_federated::v0::Value> ComputationRunner::Execute(
+    const tensorflow_federated::v0::Value& fn,
+    std::optional<tensorflow_federated::v0::Value> arg, int num_clients,
+    const std::string& target_worker_bns) {
   auto leaf_executor_fn =
       [this]() -> absl::StatusOr<std::shared_ptr<Executor>> {
     ABSL_ASSIGN_OR_RETURN(auto executor, leaf_executor_factory_());
@@ -252,24 +241,22 @@ grpc::Status ComputationRunner::Execute(
   // Create executor stack.
   absl::StatusOr<std::shared_ptr<Executor>> executor;
   if (use_mergeable_execution_context_) {
-    if (!request->worker_bns().empty()) {
+    if (!target_worker_bns.empty()) {
       // This will only be set if the MergeableCompExecutionContext has already
       // predistributed work.
       int worker_idx = -1;
       for (size_t i = 0; i < worker_bns_.size(); ++i) {
-        if (worker_bns_[i] == request->worker_bns()) {
+        if (worker_bns_[i] == target_worker_bns) {
           worker_idx = static_cast<int>(i);
           break;
         }
       }
       if (worker_idx == -1) {
-        return grpc::Status(
-            grpc::StatusCode::INVALID_ARGUMENT,
-            absl::StrCat("Worker BNS not found: ", request->worker_bns()));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Worker BNS not found: ", target_worker_bns));
       }
       CardinalityMap cardinality_map;
-      cardinality_map[tensorflow_federated::kClientsUri] =
-          session_request.num_clients();
+      cardinality_map[tensorflow_federated::kClientsUri] = num_clients;
       executor = CreateStreamingRemoteExecutor(
           std::make_unique<NoiseExecutorStub>(
               noise_client_sessions_[worker_idx].get()),
@@ -277,37 +264,24 @@ grpc::Status ComputationRunner::Execute(
     } else {
       // Execution on the local server stack (e.g. for merge, after_merge, or
       // single-node).
-      executor =
-          CreateExecutor(leaf_executor_fn, session_request.num_clients());
+      executor = CreateExecutor(leaf_executor_fn, num_clients);
     }
   } else {
     if (worker_bns_.empty()) {
       // Single-node execution on the local server stack.
-      executor =
-          CreateExecutor(leaf_executor_fn, session_request.num_clients());
+      executor = CreateExecutor(leaf_executor_fn, num_clients);
     } else {
       // Distributed executor (either ElasticComposingExecutor or
       // ComposingExecutor).
-      executor = CreateDistributedExecutor(leaf_executor_fn,
-                                           session_request.num_clients());
+      executor = CreateDistributedExecutor(leaf_executor_fn, num_clients);
     }
   }
   if (!executor.status().ok()) {
-    return ToGrpcStatus(executor.status());
+    return executor.status();
   }
 
   // Execute the computation using the executor stack and return the result.
-  absl::StatusOr<tensorflow_federated::v0::Value> result =
-      ExecuteInternal(*executor, std::move(session_request.function()),
-                      session_request.has_initial_arg()
-                          ? std::optional<tensorflow_federated::v0::Value>(
-                                session_request.initial_arg())
-                          : std::nullopt);
-  if (!result.status().ok()) {
-    return ToGrpcStatus(result.status());
-  }
-  response->mutable_result()->PackFrom(*result);
-  return grpc::Status::OK;
+  return ExecuteInternal(*executor, fn, std::move(arg));
 }
 
 }  // namespace confidential_federated_compute::program_executor_tee

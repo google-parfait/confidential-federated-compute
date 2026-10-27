@@ -18,6 +18,7 @@ import unittest
 from absl.testing import absltest
 from absl.testing import parameterized
 import compilers
+import computation_runner_bindings_tensorflow
 import fake_service_bindings_tensorflow
 import federated_language
 import numpy as np
@@ -25,10 +26,6 @@ import portpicker
 from program_executor_tee.program_context import execution_context
 import tensorflow as tf
 import tensorflow_federated as tff
-
-TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = (
-    "computation_runner_binary_tensorflow"
-)
 
 
 class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
@@ -56,8 +53,8 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     mock_compiler = unittest.mock.Mock()
     context = execution_context.TrustedContext(
         mock_compiler,
+        computation_runner_bindings_tensorflow.ComputationRunner,
         None,
-        TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
@@ -95,8 +92,8 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -129,8 +126,8 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -153,8 +150,8 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -175,8 +172,8 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -189,6 +186,75 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     result = my_comp(10)
     self.assertEqual(result, 11)
+
+  async def test_tf_computation_returns_numpy_arrays_without_copies(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedContext(
+            lambda x: x,
+            computation_runner_bindings_tensorflow.ComputationRunner,
+            None,
+            self.outgoing_server_address,
+            self.worker_bns,
+            self.serialized_reference_values,
+        )
+    )
+
+    @tff.tensorflow.computation
+    def create_tensors():
+      return (
+          tf.reshape(tf.range(1000, dtype=tf.float32), [10, 100]),
+          tf.constant([-1, 2, -3], tf.int8),
+      )
+
+    floats, ints = create_tensors()
+
+    # The TensorFlow executor returns tensors in `content`, as a single chunk
+    # that is the buffer of the tensor. So the NumPy arrays share that buffer,
+    # and are read-only (as `tff.framework.deserialize_value` returns arrays for
+    # `content`).
+    for array in (floats, ints):
+      self.assertIsInstance(array, np.ndarray)
+      self.assertFalse(array.flags.writeable)
+      self.assertEqual(type(array.base).__name__, "PyCapsule")
+    self.assertEqual(floats.dtype, np.float32)
+    np.testing.assert_array_equal(
+        floats, np.arange(1000, dtype=np.float32).reshape([10, 100])
+    )
+    self.assertEqual(ints.dtype, np.int8)
+    np.testing.assert_array_equal(ints, np.array([-1, 2, -3], np.int8))
+
+  async def test_federated_sequence_round_trip(self):
+    federated_language.framework.set_default_context(
+        execution_context.TrustedContext(
+            compilers.compile_tf_to_call_dominant,
+            computation_runner_bindings_tensorflow.ComputationRunner,
+            None,
+            self.outgoing_server_address,
+            self.worker_bns,
+            self.serialized_reference_values,
+        )
+    )
+    sequence_type = federated_language.FederatedType(
+        federated_language.SequenceType(
+            federated_language.StructType([
+                ("x", federated_language.TensorType(np.int32)),
+                ("y", federated_language.TensorType(np.float32, [2])),
+            ])
+        ),
+        federated_language.CLIENTS,
+    )
+
+    @federated_language.federated_computation(sequence_type)
+    def identity(value):
+      return value
+
+    # Each client's sequence is a list of elements. None are empty, since the
+    # TensorFlow executor cannot create a dataset from an empty sequence.
+    value = [
+        [{"x": 1, "y": [1.0, 2.0]}, {"x": 2, "y": [3.0, 4.0]}],
+        [{"x": 3, "y": [5.0, 6.0]}],
+    ]
+    np.testing.assert_equal(identity(value), value)
 
 
 class ExecutionContextDistributedTest(
@@ -230,8 +296,8 @@ class ExecutionContextDistributedTest(
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -274,8 +340,8 @@ class ExecutionContextDistributedTest(
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -302,8 +368,8 @@ class ExecutionContextDistributedTest(
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -329,8 +395,8 @@ class ExecutionContextDistributedTest(
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             lambda x: x,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             self.outgoing_server_address,
             self.worker_bns,
             self.serialized_reference_values,
@@ -380,8 +446,8 @@ class MergeableExecutionContextTest(
   def _create_context(self):
     return execution_context.TrustedContext(
         compilers.compile_tf_to_call_dominant,
+        computation_runner_bindings_tensorflow.ComputationRunner,
         tff.backends.native.compile_to_mergeable_comp_form,
-        TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
@@ -412,8 +478,6 @@ class MergeableExecutionContextTest(
     result_1, result_2 = my_comp([1, 2, 3, 4], 10)
     self.assertEqual(result_1, 10)
     self.assertEqual(result_2, 10)
-
-    context.close()
 
   async def test_learning_process_next(self):
     context = self._create_context()
@@ -497,8 +561,6 @@ class MergeableExecutionContextTest(
     new_state, metrics = learning_process.next(state, client_data)
     self.assertIsNotNone(new_state)
     self.assertIsNotNone(metrics)
-
-    context.close()
 
 
 if __name__ == "__main__":

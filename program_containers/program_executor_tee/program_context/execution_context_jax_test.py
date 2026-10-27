@@ -24,13 +24,10 @@ import numpy as np
 from parameterized import parameterized_class
 import portpicker
 from program_executor_tee.program_context import execution_context
+from program_executor_tee.program_context.cc import computation_runner_bindings_jax
 from program_executor_tee.program_context.cc import fake_service_bindings_jax
 import tensorflow_federated as tff
 from tensorflow_federated.python.core.impl.execution_contexts import mergeable_comp_execution_context
-
-XLA_COMPUTATION_RUNNER_BINARY_PATH = (
-    "program_executor_tee/program_context/cc/computation_runner_binary_xla"
-)
 
 
 def compile_to_call_dominant(
@@ -205,10 +202,10 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
     self.context = execution_context.TrustedContext(
         compile_to_call_dominant,
+        computation_runner_bindings_jax.ComputationRunner,
         build_example_jax_mergeable_comp_form
         if getattr(self, "use_mergeable_execution_context", False)
         else None,
-        XLA_COMPUTATION_RUNNER_BINARY_PATH,
         self.outgoing_server_address,
         self.worker_bns,
         self.serialized_reference_values,
@@ -219,8 +216,6 @@ class ExecutionContextTest(unittest.IsolatedAsyncioTestCase):
 
   def tearDown(self):
     self.server.stop()
-    if self.context:
-      self.context.close()
 
   def _skip_unless_resilient(self):
     is_resilient = getattr(
