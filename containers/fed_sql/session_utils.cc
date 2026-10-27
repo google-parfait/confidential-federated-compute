@@ -19,9 +19,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_parser.h"
 
@@ -70,8 +70,8 @@ absl::StatusOr<std::vector<Tensor>> Deserialize(
       // Inference output columns do not exist in the checkpoint.
       continue;
     }
-    TFF_ASSIGN_OR_RETURN(Tensor column,
-                         checkpoint->GetTensor(table_schema.column(i).name()));
+    ABSL_ASSIGN_OR_RETURN(Tensor column,
+                          checkpoint->GetTensor(table_schema.column(i).name()));
     if (!num_rows.has_value()) {
       num_rows.emplace(column.num_elements());
     } else if (num_rows.value() != column.num_elements()) {
@@ -84,7 +84,7 @@ absl::StatusOr<std::vector<Tensor>> Deserialize(
   for (const auto& column_name : input_column_names) {
     // Input columns are not listed in the per-client table schema, and have to
     // be added manually.
-    TFF_ASSIGN_OR_RETURN(Tensor column, checkpoint->GetTensor(column_name));
+    ABSL_ASSIGN_OR_RETURN(Tensor column, checkpoint->GetTensor(column_name));
     if (!num_rows.has_value()) {
       num_rows.emplace(column.num_elements());
     } else if (num_rows.value() != column.num_elements()) {
