@@ -1,11 +1,8 @@
 import compilers
+import computation_runner_bindings_tensorflow
 import federated_language
 from program_executor_tee.program_context import execution_context
 import tensorflow_federated as tff
-
-TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH = (
-    "computation_runner_binary_tensorflow"
-)
 
 
 def get_program_initialize_fn(
@@ -29,10 +26,10 @@ def get_program_initialize_fn(
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compilers.compile_tf_to_call_dominant,
+            computation_runner_bindings_tensorflow.ComputationRunner,
             tff.backends.native.compile_to_mergeable_comp_form
             if use_mergeable_execution_context
             else None,
-            TENSORFLOW_COMPUTATION_RUNNER_BINARY_PATH,
             outgoing_server_address,
             worker_bns,
             serialized_reference_values,

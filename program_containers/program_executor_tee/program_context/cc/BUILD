@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@pybind11_bazel//:build_defs.bzl", "pybind_extension", "pybind_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 
 package(
@@ -81,10 +81,8 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@federated_compute//fcp/base:status_converters",
         "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_cc_grpc",
         "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_cc_proto",
-        "@federated_compute//fcp/protos/confidentialcompute:tff_config_cc_proto",
         "@oak//cc/ffi:bytes_bindings",
         "@oak//cc/ffi:bytes_view",
         "@oak//cc/ffi:error_bindings",
@@ -97,23 +95,6 @@ cc_library(
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:remote_executor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:streaming_remote_executor",
         "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
-    ],
-)
-
-cc_binary(
-    name = "computation_runner_binary_xla",
-    srcs = ["computation_runner_main_xla.cc"],
-    deps = [
-        ":computation_runner",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@federated_language_jax//federated_language_jax/executor:xla_executor",
-        "@oak//proto/attestation:reference_value_cc_proto",
-        "@xla//xla/service:cpu_plugin",
-        "@xla//xla/stream_executor/host:host_platform",
     ],
 )
 
@@ -529,6 +510,64 @@ pybind_extension(
         ":fake_server",
         "@federated_language_jax//federated_language_jax/executor:xla_executor",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "@xla//xla/service:cpu_plugin",
+        "@xla//xla/stream_executor/host:host_platform",
+    ],
+)
+
+pybind_library(
+    name = "value_conversion",
+    srcs = ["value_conversion.cc"],
+    hdrs = ["value_conversion.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf_lite",
+        "@federated_language//federated_language/proto:array_cc_proto",
+        "@federated_language//federated_language/proto:computation_cc_proto",
+        "@federated_language//federated_language/proto:data_type_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+pybind_extension(
+    name = "value_conversion_test_bindings",
+    testonly = True,
+    srcs = ["value_conversion_test_bindings.cc"],
+    deps = [
+        ":value_conversion",
+        "@federated_language//federated_language/proto:computation_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+pybind_library(
+    name = "computation_runner_bindings",
+    srcs = ["computation_runner_bindings.cc"],
+    hdrs = ["computation_runner_bindings.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":computation_runner",
+        ":value_conversion",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@federated_language//federated_language/proto:computation_cc_proto",
+        "@oak//proto/attestation:reference_value_cc_proto",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:executor",
+        "@org_tensorflow_federated//tensorflow_federated/proto/v0:executor_cc_proto",
+    ],
+)
+
+pybind_extension(
+    name = "computation_runner_bindings_jax",
+    srcs = ["computation_runner_bindings_jax.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":computation_runner_bindings",
+        "@federated_language_jax//federated_language_jax/executor:xla_executor",
         "@xla//xla/service:cpu_plugin",
         "@xla//xla/stream_executor/host:host_platform",
     ],

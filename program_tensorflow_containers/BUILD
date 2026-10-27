@@ -62,25 +62,6 @@ py_library(
     ],
 )
 
-cc_binary(
-    name = "computation_runner_binary_tensorflow",
-    srcs = ["computation_runner_main_tensorflow.cc"],
-    linkopts = ["-Wl,-s"],
-    deps = [
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:computation_runner",
-        "@oak//proto/attestation:reference_value_cc_proto",
-        "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
-        "@org_tensorflow//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
-        "@org_tensorflow//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
-    ],
-)
-
 pybind_extension(
     name = "fake_service_bindings_tensorflow",
     srcs = ["fake_service_bindings_tensorflow.cc"],
@@ -93,13 +74,25 @@ pybind_extension(
     ],
 )
 
+pybind_extension(
+    name = "computation_runner_bindings_tensorflow",
+    srcs = ["computation_runner_bindings_tensorflow.cc"],
+    deps = [
+        "@confidential_federated_compute_program//program_executor_tee/program_context/cc:computation_runner_bindings",
+        "@org_tensorflow//tensorflow/compiler/jit:xla_cpu_jit",
+        "@org_tensorflow//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
+        "@org_tensorflow//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/executors:tensorflow_executor",
+    ],
+)
+
 py_test(
     name = "execution_context_tensorflow_test",
     srcs = ["execution_context_tensorflow_test.py"],
-    data = [":computation_runner_binary_tensorflow"],
     tags = ["noasan"],
     deps = [
         ":compilers",
+        ":computation_runner_bindings_tensorflow",
         ":fake_service_bindings_tensorflow",
         "@confidential_federated_compute_program//program_executor_tee/program_context:execution_context",
         "@federated_language//federated_language",
@@ -115,6 +108,7 @@ py_library(
     srcs = ["initialize_program_tensorflow.py"],
     deps = [
         ":compilers",
+        ":computation_runner_bindings_tensorflow",
         "@confidential_federated_compute_program//program_executor_tee/program_context:execution_context",
         "@jax_privacy//jax_privacy",
     ],
@@ -151,7 +145,6 @@ cc_library(
     srcs = ["confidential_transform_server.cc"],
     hdrs = ["confidential_transform_server.h"],
     data = [
-        ":computation_runner_binary_tensorflow",
         ":trusted_program_py_runtime",
     ],
     deps = [

@@ -1,10 +1,7 @@
 import federated_language
 from program_executor_tee.program_context import execution_context
+from program_executor_tee.program_context.cc import computation_runner_bindings_jax
 import tensorflow_federated as tff
-
-XLA_COMPUTATION_RUNNER_BINARY_PATH = (
-    "program_executor_tee/program_context/cc/computation_runner_binary_xla"
-)
 
 
 def compile_to_call_dominant(
@@ -43,8 +40,8 @@ def get_program_initialize_fn(
     federated_language.framework.set_default_context(
         execution_context.TrustedContext(
             compiler_fn=compile_to_call_dominant,
+            computation_runner_cls=computation_runner_bindings_jax.ComputationRunner,
             mergeable_comp_compiler_fn=None,
-            computation_runner_binary_path=XLA_COMPUTATION_RUNNER_BINARY_PATH,
             outgoing_server_address=outgoing_server_address,
             worker_bns=worker_bns,
             serialized_reference_values=serialized_reference_values,

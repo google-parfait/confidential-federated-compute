@@ -14,74 +14,66 @@
 """Tests for execution_context_helper."""
 
 import asyncio
+import collections
 import unittest
 from unittest import mock
 
 from absl.testing import absltest
-from fcp.protos.confidentialcompute import computation_delegation_pb2
-from fcp.protos.confidentialcompute import tff_config_pb2
 import federated_language
-from google.protobuf import any_pb2
+from federated_language_jax.computation import jax_computation
+from google.protobuf import message
+import jax.numpy as jnp
 import numpy as np
 from program_executor_tee.program_context import execution_context_helper
+from program_executor_tee.program_context.cc import computation_runner_bindings_jax
 import tensorflow_federated as tff
-from tensorflow_federated.proto.v0 import executor_pb2
+
+
+def _create_runner():
+  return computation_runner_bindings_jax.ComputationRunner()
+
+
+def _identity(type_spec):
+  @federated_language.federated_computation(type_spec)
+  def identity(value):
+    return value
+
+  return identity
 
 
 class ExecutionContextHelperTest(absltest.TestCase):
 
-  def test_create_computation_request_no_arg(self):
+  def test_execute_in_process_no_arg(self):
     @federated_language.federated_computation()
     def return_ten():
       return 10
 
-    req = execution_context_helper.create_computation_request(return_ten)
-    self.assertTrue(
-        req.computation.Is(tff_config_pb2.TffSessionConfig.DESCRIPTOR)
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), return_ten
     )
-    session_config = tff_config_pb2.TffSessionConfig()
-    req.computation.Unpack(session_config)
-    self.assertIsInstance(session_config.function, executor_pb2.Value)
-    self.assertEqual(session_config.num_clients, 0)
-    self.assertFalse(session_config.HasField("initial_arg"))
+    self.assertEqual(result, 10)
 
-  def test_create_computation_request_with_arg(self):
-    @federated_language.federated_computation(
-        federated_language.FederatedType(np.int32, federated_language.CLIENTS)
+  def test_execute_in_process_with_arg(self):
+    client_type = federated_language.FederatedType(
+        np.int32, federated_language.CLIENTS
     )
-    def sum_comp(val):
-      return federated_language.federated_sum(val)
 
-    req = execution_context_helper.create_computation_request(
-        sum_comp, arg=[10, 20, 30]
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), _identity(client_type), [10, 20, 30]
     )
-    self.assertTrue(
-        req.computation.Is(tff_config_pb2.TffSessionConfig.DESCRIPTOR)
-    )
-    session_config = tff_config_pb2.TffSessionConfig()
-    req.computation.Unpack(session_config)
-    self.assertIsInstance(session_config.function, executor_pb2.Value)
-    self.assertEqual(session_config.num_clients, 3)
-    self.assertTrue(session_config.HasField("initial_arg"))
-    self.assertIsInstance(session_config.initial_arg, executor_pb2.Value)
+    self.assertEqual(result, [10, 20, 30])
 
-  def test_create_computation_request_server_arg(self):
+  def test_execute_in_process_server_arg(self):
     server_type = federated_language.FederatedType(
         np.int32, federated_language.SERVER
     )
 
-    @federated_language.federated_computation(server_type)
-    def identity_comp(val):
-      return val
-
-    req = execution_context_helper.create_computation_request(
-        identity_comp, arg=42
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), _identity(server_type), 42
     )
-    session_config = tff_config_pb2.TffSessionConfig()
-    req.computation.Unpack(session_config)
-    self.assertEqual(session_config.num_clients, 0)
+    self.assertEqual(result, 42)
 
-  def test_create_computation_request_mixed_arg(self):
+  def test_execute_in_process_mixed_arg(self):
     client_type = federated_language.FederatedType(
         np.int32, federated_language.CLIENTS
     )
@@ -91,26 +83,132 @@ class ExecutionContextHelperTest(absltest.TestCase):
 
     @federated_language.federated_computation([client_type, server_type])
     def mixed_comp(client_val, server_val):
-      return federated_language.federated_sum(client_val), server_val
+      return client_val, server_val
 
-    req = execution_context_helper.create_computation_request(
-        mixed_comp, arg=([10, 20, 30, 40], 99)
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), mixed_comp, ([10, 20, 30, 40], 99)
     )
-    session_config = tff_config_pb2.TffSessionConfig()
-    req.computation.Unpack(session_config)
-    self.assertEqual(session_config.num_clients, 4)
+    self.assertEqual(result, ([10, 20, 30, 40], 99))
 
-  def test_unpack_and_deserialize_computation_response(self):
-    val_proto, _ = tff.framework.serialize_value(
-        np.int32(42), federated_language.TensorType(np.int32)
+  def test_execute_in_process_selects_struct_element(self):
+    @federated_language.federated_computation(
+        federated_language.TensorType(np.int32),
+        federated_language.TensorType(np.int32),
     )
-    any_proto = any_pb2.Any()
-    any_proto.Pack(val_proto)
-    resp = computation_delegation_pb2.ComputationResponse(result=any_proto)
-    res = execution_context_helper.unpack_and_deserialize_computation_response(
-        resp, federated_language.TensorType(np.int32)
+    def second(x, y):
+      del x  # Unused.
+      return y
+
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), second, (np.int32(10), np.int32(20))
     )
-    self.assertEqual(res, 42)
+    self.assertEqual(result, 20)
+
+  def test_execute_in_process_federated_all_equal_value(self):
+    # The number of clients is inferred from the value that is not all-equal.
+    @federated_language.federated_computation(
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
+        federated_language.FederatedType(
+            np.int32, federated_language.CLIENTS, all_equal=True
+        ),
+    )
+    def identity(x, y):
+      return x, y
+
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), identity, ([1, 2, 3], 5)
+    )
+    self.assertEqual(result, ([1, 2, 3], 5))
+
+  def test_execute_in_process_with_federated_arg_and_result(self):
+    TestValue = collections.namedtuple("TestValue", ["x", "y"])
+    type_spec = federated_language.FederatedType(
+        federated_language.StructWithPythonType(
+            elements=[
+                ("x", federated_language.TensorType(np.int32)),
+                ("y", federated_language.TensorType(np.float32)),
+            ],
+            container_type=TestValue,
+        ),
+        federated_language.CLIENTS,
+    )
+    arg = [TestValue(x=1, y=2.0), TestValue(x=3, y=4.0)]
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), _identity(type_spec), arg
+    )
+    self.assertEqual(result, arg)
+    self.assertIsInstance(result[0], TestValue)
+
+  def test_execute_in_process_string_client_value_larger_than_2gib(self):
+    client_type = federated_language.FederatedType(
+        federated_language.TensorType(np.str_), federated_language.CLIENTS
+    )
+    # Strings are still sent as serialized protos, and TFF fails to serialize a
+    # string of 2 GiB or more, before the runner is called.
+    with self.assertRaises(message.DecodeError):
+      execution_context_helper.execute_in_process(
+          _create_runner(), _identity(client_type), [b"\0" * 2**31]
+      )
+
+  def test_execute_in_process_client_values_larger_than_2gib(self):
+    # Each client's tensor (800 MiB) is sent as a NumPy array, with no
+    # serialization, and their total (2.4 GiB) is not limited.
+    num_elements = 200 * 2**20
+    client_type = federated_language.FederatedType(
+        federated_language.TensorType(np.float32, [num_elements]),
+        federated_language.CLIENTS,
+    )
+    arg = [
+        np.arange(num_elements, dtype=np.float32) + client
+        for client in range(3)
+    ]
+
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), _identity(client_type), arg
+    )
+
+    self.assertLen(result, 3)
+    for client_result, client_arg in zip(result, arg):
+      self.assertIsInstance(client_result, np.ndarray)
+      self.assertEqual(client_result.dtype, np.float32)
+      self.assertEqual(client_result.shape, (num_elements,))
+      self.assertTrue(np.array_equal(client_result, client_arg))
+
+  def test_execute_in_process_result_larger_than_2gib(self):
+    num_elements = 2**29 + 1  # Just over 2 GiB of float32.
+
+    @jax_computation.jax_computation
+    def create_large_array():
+      return jnp.arange(num_elements, dtype=np.float32)
+
+    # The result is not serialized: the NumPy array owns the typed list of the
+    # C++ result.
+    result = execution_context_helper.execute_in_process(
+        _create_runner(), create_large_array
+    )
+
+    self.assertIsInstance(result, np.ndarray)
+    self.assertEqual(result.dtype, np.float32)
+    self.assertEqual(result.shape, (num_elements,))
+    self.assertTrue(result.flags.writeable)
+    self.assertEqual(result[0], 0.0)
+    self.assertEqual(result[12345], 12345.0)
+    self.assertEqual(result[2**28], float(2**28))
+    self.assertEqual(result[-1], float(2**29))
+
+  def test_execute_rejects_fn_that_is_not_a_serialized_value(self):
+    comp_pb, _ = tff.framework.serialize_value(
+        _identity(federated_language.TensorType(np.int32))
+    )
+    runner = _create_runner()
+    # `fn` must be bytes, so even an unserialized proto is rejected.
+    for value in (None, "not bytes", comp_pb):
+      with self.assertRaisesRegex(TypeError, "is not an instance of 'bytes'"):
+        runner.execute(value, None)
+    with self.assertRaisesRegex(
+        ValueError, "Failed to parse serialized tensorflow_federated.v0.Value"
+    ):
+      runner.execute(b"not a proto", None)
 
   def test_contains_clients_placement_federated_clients(self):
     client_type = federated_language.FederatedType(
@@ -353,21 +451,56 @@ class ResilientSubroundsTest(unittest.IsolatedAsyncioTestCase):
 class RunnerAsyncContextTest(unittest.IsolatedAsyncioTestCase):
   """Tests for RunnerAsyncContext.invoke."""
 
-  def _make_stub(self, response=None, side_effect=None):
-    stub = mock.MagicMock()
-    if side_effect is not None:
-      stub.Execute.side_effect = side_effect
-    else:
-      stub.Execute.return_value = response
-    return stub
-
   def _make_fake_comp(self, type_signature):
     comp = mock.MagicMock()
     comp.type_signature = type_signature
     return comp
 
   async def test_invoke_routes_to_worker_bns_for_clients_placement(self):
-    """Computations with @CLIENTS should set worker_bns on the request."""
+    """Computations with @CLIENTS should execute on the context's worker."""
+    client_type = federated_language.FederatedType(
+        np.int32, federated_language.CLIENTS
+    )
+    server_type = federated_language.FederatedType(
+        np.int32, federated_language.SERVER
+    )
+    func_type = federated_language.FunctionType(client_type, server_type)
+    comp = self._make_fake_comp(func_type)
+    runner = mock.MagicMock()
+
+    with mock.patch.object(
+        execution_context_helper, "execute_in_process", return_value=99
+    ) as mock_execute:
+      ctx = execution_context_helper.RunnerAsyncContext(
+          runner, worker_bns="worker_0"
+      )
+      result = await ctx.invoke(comp, arg=[1, 2, 3])
+
+    self.assertEqual(result, 99)
+    mock_execute.assert_called_once_with(runner, comp, [1, 2, 3], "worker_0")
+
+  async def test_invoke_routes_empty_bns_for_server_only(self):
+    """Computations without @CLIENTS should execute locally."""
+    server_type = federated_language.FederatedType(
+        np.int32, federated_language.SERVER
+    )
+    func_type = federated_language.FunctionType(server_type, server_type)
+    comp = self._make_fake_comp(func_type)
+    runner = mock.MagicMock()
+
+    with mock.patch.object(
+        execution_context_helper, "execute_in_process", return_value=99
+    ) as mock_execute:
+      ctx = execution_context_helper.RunnerAsyncContext(
+          runner, worker_bns="worker_0"
+      )
+      result = await ctx.invoke(comp)
+
+    self.assertEqual(result, 99)
+    mock_execute.assert_called_once_with(runner, comp, None, "")
+
+  async def test_invoke_wraps_error_in_runtime_error(self):
+    """Errors should be wrapped in RuntimeError with the target worker."""
     client_type = federated_language.FederatedType(
         np.int32, federated_language.CLIENTS
     )
@@ -377,113 +510,20 @@ class RunnerAsyncContextTest(unittest.IsolatedAsyncioTestCase):
     func_type = federated_language.FunctionType(client_type, server_type)
     comp = self._make_fake_comp(func_type)
 
-    val_proto, _ = tff.framework.serialize_value(
-        np.int32(99), federated_language.TensorType(np.int32)
-    )
-    any_proto = any_pb2.Any()
-    any_proto.Pack(val_proto)
-    response = computation_delegation_pb2.ComputationResponse(result=any_proto)
-    stub = self._make_stub(response=response)
-
     with mock.patch.object(
         execution_context_helper,
-        "create_computation_request",
-    ) as mock_create:
-      mock_req = computation_delegation_pb2.ComputationRequest()
-      mock_create.return_value = mock_req
-
-      ctx = execution_context_helper.RunnerAsyncContext(
-          stub, worker_bns="worker_0"
-      )
-      await ctx.invoke(comp, arg=[1, 2, 3])
-
-      self.assertEqual(mock_req.worker_bns, "worker_0")
-      stub.Execute.assert_called_once_with(mock_req)
-
-  async def test_invoke_routes_empty_bns_for_server_only(self):
-    """Computations without @CLIENTS should set worker_bns to empty."""
-    server_type = federated_language.FederatedType(
-        np.int32, federated_language.SERVER
-    )
-    func_type = federated_language.FunctionType(server_type, server_type)
-    comp = self._make_fake_comp(func_type)
-
-    val_proto, _ = tff.framework.serialize_value(
-        np.int32(99), federated_language.TensorType(np.int32)
-    )
-    any_proto = any_pb2.Any()
-    any_proto.Pack(val_proto)
-    response = computation_delegation_pb2.ComputationResponse(result=any_proto)
-    stub = self._make_stub(response=response)
-
-    with mock.patch.object(
-        execution_context_helper,
-        "create_computation_request",
-    ) as mock_create:
-      mock_req = computation_delegation_pb2.ComputationRequest()
-      mock_create.return_value = mock_req
-
-      ctx = execution_context_helper.RunnerAsyncContext(
-          stub, worker_bns="worker_0"
-      )
-      await ctx.invoke(comp)
-
-      self.assertEqual(mock_req.worker_bns, "")
-      stub.Execute.assert_called_once_with(mock_req)
-
-  async def test_invoke_wraps_grpc_error_in_runtime_error(self):
-    """gRPC errors should be wrapped in RuntimeError with details."""
-    import grpc
-
-    class FakeRpcError(grpc.RpcError):
-
-      def details(self):
-        return "deadline exceeded"
-
-    server_type = federated_language.FederatedType(
-        np.int32, federated_language.SERVER
-    )
-    func_type = federated_language.FunctionType(None, server_type)
-    comp = self._make_fake_comp(func_type)
-
-    stub = self._make_stub(side_effect=FakeRpcError())
-
-    with mock.patch.object(
-        execution_context_helper,
-        "create_computation_request",
-        return_value=computation_delegation_pb2.ComputationRequest(),
+        "execute_in_process",
+        side_effect=ValueError("deadline exceeded"),
     ):
-      ctx = execution_context_helper.RunnerAsyncContext(stub)
+      ctx = execution_context_helper.RunnerAsyncContext(
+          mock.MagicMock(), worker_bns="worker_0"
+      )
       with self.assertRaisesRegex(
-          RuntimeError, "Request to computation runner failed"
+          RuntimeError,
+          "Request to computation runner failed with error: deadline exceeded"
+          r" \(target worker: 'worker_0'\)",
       ):
-        await ctx.invoke(comp)
-
-  async def test_invoke_wraps_deserialization_error_in_runtime_error(self):
-    """Non-gRPC exceptions should be wrapped in RuntimeError."""
-    server_type = federated_language.FederatedType(
-        np.int32, federated_language.SERVER
-    )
-    func_type = federated_language.FunctionType(None, server_type)
-    comp = self._make_fake_comp(func_type)
-
-    # Return a response with an invalid/empty Any proto to trigger
-    # a deserialization error.
-    bad_response = computation_delegation_pb2.ComputationResponse(
-        result=any_pb2.Any()
-    )
-    stub = self._make_stub(response=bad_response)
-
-    with mock.patch.object(
-        execution_context_helper,
-        "create_computation_request",
-        return_value=computation_delegation_pb2.ComputationRequest(),
-    ):
-      ctx = execution_context_helper.RunnerAsyncContext(stub)
-      with self.assertRaisesRegex(
-          RuntimeError, "Error decoding computation runner response"
-      ):
-        await ctx.invoke(comp)
+        await ctx.invoke(comp, arg=[1, 2, 3])
 
 
 if __name__ == "__main__":

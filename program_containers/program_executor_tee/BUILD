@@ -249,6 +249,7 @@ py_library(
     srcs = ["initialize_program_xla.py"],
     deps = [
         "//program_executor_tee/program_context:execution_context",
+        "//program_executor_tee/program_context/cc:computation_runner_bindings_jax",
         "@org_tensorflow_federated//tensorflow_federated",
     ],
 )
@@ -295,9 +296,6 @@ cc_library(
 cc_test(
     name = "confidential_transform_server_xla_test",
     srcs = ["confidential_transform_server_xla_test.cc"],
-    data = [
-        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
-    ],
     env = {
         "PYTHONPATH": "$(PYTHONPATH)",
         "PYTHONHOME": "$(PYTHONHOME)",
@@ -320,9 +318,6 @@ cc_test(
 cc_binary(
     name = "root_main_xla",
     srcs = ["root_main_xla.cc"],
-    data = [
-        "//program_executor_tee/program_context/cc:computation_runner_binary_xla",
-    ],
     linkstatic = True,
     local_defines = [
         "CPP_PYTHON_PATH=\\\"$(PYTHONPATH)\\\"",

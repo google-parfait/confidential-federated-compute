@@ -11,69 +11,62 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Helper utilities for serialized computation requests and responses."""
+"""Helpers for executing computations with an in-process ComputationRunner."""
 
 import asyncio
 import collections
 from typing import Awaitable, Callable, Optional, Sequence
 
-from fcp.protos.confidentialcompute import computation_delegation_pb2
-from fcp.protos.confidentialcompute import computation_delegation_pb2_grpc
-from fcp.protos.confidentialcompute import tff_config_pb2
 import federated_language
-from google.protobuf import any_pb2
-import grpc
+from program_executor_tee.program_context import value_conversion
 import tensorflow_federated as tff
-from tensorflow_federated.proto.v0 import executor_pb2
 
 
-def create_computation_request(
-    comp: object, arg: Optional[object] = None
-) -> computation_delegation_pb2.ComputationRequest:
-  """Builds a ComputationRequest containing the serialized comp, arg, and num_clients."""
-  session_config = tff_config_pb2.TffSessionConfig()
-  serialized_comp, _ = tff.framework.serialize_value(comp)
-  session_config.function.CopyFrom(serialized_comp)
+def execute_in_process(
+    runner,
+    comp: object,
+    arg: Optional[object] = None,
+    target_worker_bns: str = "",
+    return_type: Optional[federated_language.Type] = None,
+) -> object:
+  """Executes `comp(arg)` with a `ComputationRunner` and returns the result.
 
-  serialized_arg = None
-  clients_cardinality = 0
+  The argument and result are passed to and from the runner as leaves (see
+  `value_conversion`), so their total size is not limited by the 2 GiB proto
+  limit. Tensors of bool and numeric dtypes are passed as NumPy arrays, with no
+  serialization, so they are not limited by it either.
+
+  Args:
+    runner: A `ComputationRunner` (see `computation_runner_bindings.h`).
+    comp: The computation to execute.
+    arg: The argument of `comp`, or `None` if it has no parameter.
+    target_worker_bns: The worker to execute `comp` on, if any. See
+      `ComputationRunner::Execute`.
+    return_type: The type of the result, used to restore its Python containers.
+      Defaults to the result type of `comp`.
+
+  Returns:
+    The result of `comp(arg)`.
+  """
+  parameter_type = comp.type_signature.parameter
+  num_clients = 0
   if arg is not None:
     cardinalities = federated_language.framework.infer_cardinalities(
-        arg, comp.type_signature.parameter
+        arg, parameter_type
     )
-    clients_cardinality = cardinalities.get(
-        federated_language.CLIENTS, clients_cardinality
-    )
-    serialized_arg, _ = tff.framework.serialize_value(
-        arg, comp.type_signature.parameter
-    )
-    session_config.initial_arg.CopyFrom(serialized_arg)
-  session_config.num_clients = clients_cardinality
-
-  any_proto = any_pb2.Any()
-  any_proto.Pack(session_config)
-  return computation_delegation_pb2.ComputationRequest(computation=any_proto)
-
-
-def unpack_and_deserialize_computation_response(
-    response: computation_delegation_pb2.ComputationResponse,
-    return_type: federated_language.Type,
-) -> object:
-  """Unpacks and deserializes the ComputationResponse into a Python structure."""
-  result_value = executor_pb2.Value()
-  response.result.Unpack(result_value)
-  deserialized_result, _ = tff.framework.deserialize_value(result_value)
-  if isinstance(
-      deserialized_result, federated_language.common_libs.structure.Struct
-  ):
-    deserialized_result = (
-        federated_language.common_libs.structure.to_odict_or_tuple(
-            deserialized_result
-        )
-    )
-  return federated_language.framework.to_structure_with_type(
-      deserialized_result, return_type
+    num_clients = cardinalities.get(federated_language.CLIENTS, 0)
+  comp_pb, _ = tff.framework.serialize_value(comp)
+  arg_leaves = (
+      None
+      if arg is None
+      else value_conversion.encode_value(arg, parameter_type)
   )
+  result_leaves = runner.execute(
+      comp_pb.SerializeToString(), arg_leaves, num_clients, target_worker_bns
+  )
+  if return_type is None:
+    return_type = comp.type_signature.result
+  return value_conversion.decode_value(result_leaves, return_type)
 
 
 def contains_clients_placement(type_spec: federated_language.Type) -> bool:
@@ -97,21 +90,15 @@ def contains_clients_placement(type_spec: federated_language.Type) -> bool:
 
 
 class RunnerAsyncContext(federated_language.framework.AsyncContext):
-  """AsyncContext that delegates computations to the ComputationRunner gRPC service.
+  """AsyncContext that executes computations with a `ComputationRunner`.
 
-  Used by MergeableCompExecutionContext. For computations whose type
-  signature contains @CLIENTS placement, the request's worker_bns is set
-  to the configured worker_bns so the ComputationRunner forwards execution
-  to that worker. For all other computations, worker_bns is set to empty,
-  which causes the ComputationRunner to execute them locally.
+  Used by MergeableCompExecutionContext. Computations whose type signature
+  contains @CLIENTS placement are executed on the configured worker
+  (`worker_bns`). All other computations are executed locally.
   """
 
-  def __init__(
-      self,
-      computation_runner_stub: computation_delegation_pb2_grpc.ComputationDelegationStub,
-      worker_bns: str = "",
-  ):
-    self._stub = computation_runner_stub
+  def __init__(self, runner, worker_bns: str = ""):
+    self._runner = runner
     self.worker_bns = worker_bns
 
   async def invoke(
@@ -119,36 +106,19 @@ class RunnerAsyncContext(federated_language.framework.AsyncContext):
       comp: federated_language.framework.Computation,
       arg: Optional[object] = None,
   ) -> object:
-    comp_return_type = comp.type_signature.result
     target_worker_bns = (
         self.worker_bns
         if contains_clients_placement(comp.type_signature)
         else ""
     )
-    delegation_request = create_computation_request(comp, arg)
-    delegation_request.worker_bns = target_worker_bns
-
     loop = asyncio.get_running_loop()
     try:
-      delegation_response = await loop.run_in_executor(
-          None, self._stub.Execute, delegation_request
+      return await loop.run_in_executor(
+          None, execute_in_process, self._runner, comp, arg, target_worker_bns
       )
-      return unpack_and_deserialize_computation_response(
-          delegation_response, comp_return_type
-      )
-    except grpc.RpcError as e:
-      details = (
-          e.details()
-          if hasattr(e, "details") and callable(e.details)
-          else str(e)
-      )
-      raise RuntimeError(
-          f"Request to computation runner failed with error: {details}"
-          f" (target worker: '{target_worker_bns or '(local)'}')"
-      ) from e
     except Exception as e:
       raise RuntimeError(
-          f"Error decoding computation runner response: {e}"
+          f"Request to computation runner failed with error: {e}"
           f" (target worker: '{target_worker_bns or '(local)'}')"
       ) from e
 

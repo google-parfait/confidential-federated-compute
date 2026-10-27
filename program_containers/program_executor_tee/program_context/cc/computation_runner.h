@@ -31,7 +31,7 @@ namespace confidential_federated_compute::program_executor_tee {
 // Increase gRPC message size limit to 2GB
 inline constexpr int kMaxGrpcMessageSize = 2 * 1000 * 1000 * 1000;
 
-// Stateful helper class for executing TFF computations over gRPC.
+// Stateful helper class for executing TFF computations.
 //
 // Supports three primary execution modes:
 // 1. Distributing unpartitioned federated computations to multiple workers
@@ -40,14 +40,13 @@ inline constexpr int kMaxGrpcMessageSize = 2 * 1000 * 1000 * 1000;
 //    use_mergeable_execution_context is false.
 // 2. Executing work on a single remote worker after work distribution has
 //    already been handled upstream by MergeableCompExecutionContext (when
-//    use_mergeable_execution_context is true and incoming requests specify a
-//    single target worker_bns).
+//    use_mergeable_execution_context is true and calls specify a
+//    target_worker_bns).
 // 3. Executing work on a local server stack when no remote workers are
-//    configured (worker_bns is empty) or when the request's worker_bns is
+//    configured (worker_bns is empty) or when a call's target_worker_bns is
 //    empty (e.g., merge and after_merge computations under
 //    MergeableCompExecutionContext).
-class ComputationRunner : public fcp::confidentialcompute::outgoing::
-                              ComputationDelegation::Service {
+class ComputationRunner {
  public:
   ComputationRunner(
       std::function<
@@ -58,24 +57,22 @@ class ComputationRunner : public fcp::confidentialcompute::outgoing::
       std::string outgoing_server_address, bool use_elastic_composing_executor,
       bool use_mergeable_execution_context);
 
-  // Executes the TFF computation represented in the request message using a C++
-  // execution stack. Returns a tensorflow_federated::v0::Value in the response
-  // message.
+  // Executes the TFF computation `fn(arg)` using a C++ execution stack and
+  // returns the result.
   //
-  // Work is dispatched according to the configuration and request:
-  // - If request->worker_bns() is specified, delegates execution to that
+  // Work is dispatched according to the configuration and target_worker_bns:
+  // - If target_worker_bns is specified, delegates execution to that
   //   specific worker via a remote executor (used when worker distribution was
   //   already performed by MergeableCompExecutionContext).
-  // - If request->worker_bns() is empty:
+  // - If target_worker_bns is empty:
   //   - When worker_bns_ is empty or use_mergeable_execution_context is true,
   //     executes on the local server stack.
   //   - Otherwise, distributes the computation across all workers in
   //     worker_bns_ using ComposingExecutor or ElasticComposingExecutor.
-  grpc::Status Execute(
-      ::grpc::ServerContext* context,
-      const ::fcp::confidentialcompute::outgoing::ComputationRequest* request,
-      ::fcp::confidentialcompute::outgoing::ComputationResponse* response)
-      override;
+  absl::StatusOr<tensorflow_federated::v0::Value> Execute(
+      const tensorflow_federated::v0::Value& fn,
+      std::optional<tensorflow_federated::v0::Value> arg = std::nullopt,
+      int num_clients = 0, const std::string& target_worker_bns = "");
 
  private:
   absl::StatusOr<std::shared_ptr<tensorflow_federated::Executor>>

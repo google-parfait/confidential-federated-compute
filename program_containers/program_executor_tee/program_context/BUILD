@@ -17,16 +17,36 @@ load("@rules_python//python:defs.bzl", "py_library", "py_test")
 package(features = ["layering_check"])
 
 py_library(
+    name = "value_conversion",
+    srcs = ["value_conversion.py"],
+    deps = [
+        "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
+        "@pypi//numpy:pkg",
+    ],
+)
+
+py_test(
+    name = "value_conversion_test",
+    srcs = ["value_conversion_test.py"],
+    deps = [
+        ":value_conversion",
+        "//program_executor_tee/program_context/cc:value_conversion_test_bindings",
+        "@absl_py//absl/testing:absltest",
+        "@federated_language//federated_language",
+        "@org_tensorflow_federated//tensorflow_federated",
+        "@pypi//ml_dtypes:pkg",
+        "@pypi//numpy:pkg",
+    ],
+)
+
+py_library(
     name = "execution_context_helper",
     srcs = ["execution_context_helper.py"],
     deps = [
-        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
-        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_grpc",
-        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
-        "@federated_compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
+        ":value_conversion",
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//googleapis_common_protos:pkg",
     ],
 )
 
@@ -36,13 +56,11 @@ py_test(
     tags = ["noasan"],
     deps = [
         ":execution_context_helper",
+        "//program_executor_tee/program_context/cc:computation_runner_bindings_jax",
         "@absl_py//absl/testing:absltest",
-        "@com_github_grpc_grpc//src/python/grpcio/grpc:grpcio",
-        "@federated_compute//fcp/protos/confidentialcompute:computation_delegation_py_proto",
-        "@federated_compute//fcp/protos/confidentialcompute:tff_config_py_pb2",
         "@federated_language//federated_language",
+        "@federated_language_jax//federated_language_jax",
         "@org_tensorflow_federated//tensorflow_federated",
-        "@pypi//googleapis_common_protos:pkg",
         "@pypi//numpy:pkg",
     ],
 )
@@ -68,10 +86,10 @@ py_test(
     name = "execution_context_jax_test",
     size = "large",
     srcs = ["execution_context_jax_test.py"],
-    data = ["//program_executor_tee/program_context/cc:computation_runner_binary_xla"],
     tags = ["noasan"],
     deps = [
         ":execution_context",
+        "//program_executor_tee/program_context/cc:computation_runner_bindings_jax",
         "//program_executor_tee/program_context/cc:fake_service_bindings_jax",
         "@federated_language//federated_language",
         "@federated_language_jax//federated_language_jax",
