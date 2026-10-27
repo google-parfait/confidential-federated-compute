@@ -29,6 +29,7 @@ py_library(
 py_test(
     name = "value_conversion_test",
     srcs = ["value_conversion_test.py"],
+    tags = ["noasan"],
     deps = [
         ":value_conversion",
         "//program_executor_tee/program_context/cc:value_conversion_test_bindings",
