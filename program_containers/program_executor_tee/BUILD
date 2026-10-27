@@ -258,6 +258,7 @@ trusted_py_runtime(
     py_deps = [
         ":initialize_program_xla",
         "//program_executor_tee/program_context:program_runner",
+        "@federated_compute//fcp/confidentialcompute/python:min_sep_data_source",
         "@federated_language_jax//federated_language_jax",
         "@jax_privacy//jax_privacy",
         # Needed by jax.export to (de)serialize exported functions, e.g. models
