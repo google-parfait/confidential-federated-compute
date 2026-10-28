@@ -18,11 +18,31 @@ package fcp.confidentialcompute;
 
 import "fcp/protos/confidentialcompute/access_policy.proto";
 import "proto/attestation/evidence.proto";
+import "proto/attestation/reference_value.proto";
 
 // Test-only schema mirroring the pre-SignedPayload AttestationVerificationRecord
 // schema (used at commit f5e8cfc6d3e20f3dcfe63ff8f8f11647ca2fd0f9).
 message LegacyAttestationVerificationRecord {
   oak.attestation.v1.Evidence attestation_evidence = 1;
   bytes attestation_endorsements = 2;
-  fcp.confidentialcompute.DataAccessPolicy data_access_policy = 3;
+  LegacyDataAccessPolicy data_access_policy = 3;
+}
+
+// Test-only schema mirroring the legacy DataAccessPolicy schema (used at or
+// before commit c67be377a26229dee36046cb1902616076b4d37f).
+message LegacyDataAccessPolicy {
+  message Transform {
+    uint32 src = 1;
+    LegacyApplicationMatcher application = 2;
+    fcp.confidentialcompute.AccessBudget access_budget = 3;
+    repeated uint32 shared_access_budget_indices = 4;
+  }
+  repeated Transform transforms = 1;
+  repeated fcp.confidentialcompute.AccessBudget shared_access_budgets = 2;
+}
+
+message LegacyApplicationMatcher {
+  optional string tag = 1;
+  oak.attestation.v1.ReferenceValues reference_values = 2;
+  fcp.confidentialcompute.StructMatcher config_properties = 3;
 }

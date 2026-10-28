@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use access_policy_proto::fcp::confidentialcompute::{
-    AccessBudget, ApplicationMatcher, DataAccessPolicy, StructMatcher, ValueMatcher, access_budget,
-    data_access_policy::Transform, struct_matcher::FieldMatcher, value_matcher,
-    value_matcher::NumberMatcher,
+    AccessBudget, ApplicationMatcher, DataAccessPolicy, LogicalPipelinePolicy,
+    PipelineVariantPolicy, access_budget, pipeline_variant_policy::Transform,
 };
 use access_policy_proto::reference_value_proto::oak::attestation::v1::{
     AmdSevReferenceValues, BinaryReferenceValue, ContainerLayerReferenceValues,
@@ -26,8 +25,10 @@ use access_policy_proto::reference_value_proto::oak::attestation::v1::{
     text_reference_value,
 };
 use access_policy_proto::reference_value_proto::tcb_version_proto::oak::attestation::v1::TcbVersion;
+use fed_sql_container_config_proto::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 use messages_proto::oak::session::v1::EndorsedEvidence;
 use prost::Message as _;
+use prost_types::Any;
 use rustls::pki_types::pem::PemObject as _;
 use sha2::{Digest as _, Sha256};
 use signed_endorsements_proto::fcp::confidentialcompute::signed_endorsements::PipelineConfiguration;
@@ -91,93 +92,41 @@ pub fn record_with_empty_access_policy() -> (AttestationVerificationRecord, Vec<
 
 /// Returns an [`AttestationVerificationRecord`] with the same KMS
 /// attestation evidence as [`record_with_empty_access_policy`] but with a data
-/// access policy that contains a few transforms and access budgets. Most of the
-/// transforms use Oak [`ReferenceValues`] which skip most checks, while one of
-/// the transforms doesn't specify any reference values at all.
+/// access policy that contains a logical pipeline that might implement a DP
+/// aggregation, as implemented in the fed_sql container.
 pub fn record_with_nonempty_access_policy() -> (AttestationVerificationRecord, Vec<u8>, Vec<u8>) {
-    let mut data_access_policy = DataAccessPolicy { ..Default::default() };
+    let fed_sql_constraints = FedSqlContainerConfigConstraints {
+        epsilon: 1.0987,
+        delta: 1e-8,
+        intrinsic_uris: vec![
+            "fedsql_dp_group_by".to_string(),
+            "differential_privacy_tensor_aggregator_bundle".to_string(),
+        ],
+        access_budget: Some(AccessBudget { kind: Some(access_budget::Kind::Times(1)) }),
+        ..Default::default()
+    };
 
-    // Define a few shared access budgets.
-    //
-    // This one will determine how often transform #3 can process transform #1's
-    // output (it doesn't have to be a shared access budget, per se, but for the
-    // test's sake it is).
-    data_access_policy
-        .shared_access_budgets
-        .push(AccessBudget { kind: Some(access_budget::Kind::Times(5)) });
-    // This one will determine how often transform #1 and #2 can process their
-    // source blobs (at most 2 accesses may occur across both transforms).
-    data_access_policy
-        .shared_access_budgets
-        .push(AccessBudget { kind: Some(access_budget::Kind::Times(2)) });
-
-    // Next, define a few transforms.
-    // Transform #1
-    data_access_policy.transforms.push(Transform {
-        // This is a transform that processes the initial input data and produces some output data
-        // that can only be processed by transform #3.
-        src: 0,
-        application: Some(ApplicationMatcher {
-            tag: Some("app2".to_string()),
-            reference_values: Some(create_skip_all_amd_sev_reference_values()),
-            config_properties: Some(StructMatcher {
-                fields: vec![FieldMatcher {
-                    path: "field_a".to_string(),
-                    matcher: Some(ValueMatcher {
-                        kind: Some(value_matcher::Kind::NumberValue(NumberMatcher {
-                            kind: Some(value_matcher::number_matcher::Kind::Eq(1234.0)),
-                        })),
-                    }),
-                }],
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            // This might represent a pipeline that implements hierarchical aggregation across
+            // three different processing stages.
+            src_node_ids: vec![0, 1, 2],
+            dst_node_ids: vec![1, 2, 3],
+            application: Some(ApplicationMatcher {
+                tag: None,
+                reference_values: Some(create_skip_all_amd_sev_reference_values()),
             }),
-        }),
-        // This transform can access its source blob twice, but that's only possible if transform
-        // #2, which uses the same shared budget, doesn't use any of that budget.
-        access_budget: Some(AccessBudget { kind: Some(access_budget::Kind::Times(2)) }),
-        // This transform shares an access budget with transform #2.
-        shared_access_budget_indices: vec![1],
-    });
+            config_constraints: Some(
+                Any::from_msg(&fed_sql_constraints).expect("failed to pack Any"),
+            ),
+        }],
+    };
 
-    // Transform #2
-    data_access_policy.transforms.push(Transform {
-        // This is a 'terminal' transform that processes the initial input data.
-        src: 0,
-        application: Some(ApplicationMatcher {
-            tag: Some("app2".to_string()),
-            reference_values: Some(create_skip_all_amd_sev_reference_values()),
-            config_properties: Some(StructMatcher {
-                fields: vec![FieldMatcher {
-                    path: "field_b".to_string(),
-                    matcher: Some(ValueMatcher {
-                        kind: Some(value_matcher::Kind::NumberValue(NumberMatcher {
-                            kind: Some(value_matcher::number_matcher::Kind::Eq(5678.0)),
-                        })),
-                    }),
-                }],
-            }),
-        }),
-        // No transform-specific access budget in this case, only a shared access budget.
-        access_budget: None,
-        // This transform shares an access budget with transform #1.
-        shared_access_budget_indices: vec![1],
-    });
-
-    // Transform #3
-    data_access_policy.transforms.push(Transform {
-        // This is a 'terminal' transform which uses the output for the first transform.
-        src: 1,
-        application: Some(ApplicationMatcher {
-            tag: Some("app3".to_string()),
-            // For this last transform we purposely don't specify any reference values nor config
-            // properaties, effectively letting any binary perform this transform.
-            reference_values: None,
-            config_properties: None,
-        }),
-        // No transform-specific access budget in this case, only a shared access budget (even
-        // though the shared budget isn't actually shared with any other transforms).
-        access_budget: None,
-        shared_access_budget_indices: vec![0],
-    });
+    let mut data_access_policy = DataAccessPolicy::default();
+    data_access_policy.pipelines.insert(
+        "dp_pipeline".to_string(),
+        LogicalPipelinePolicy { instances: vec![variant_policy] },
+    );
 
     wrap_in_record(include_bytes!("kms_evidence.binarypb"), data_access_policy)
 }

@@ -61,15 +61,6 @@ pub fn validate_pipeline_invocation_policies(
             transform.application.as_ref().and_then(|app| app.reference_values.as_ref()).is_some(),
             "reference_values are required"
         );
-        ensure!(
-            transform.application.as_ref().and_then(|app| app.config_properties.as_ref()).is_none(),
-            "config_properties is not supported"
-        );
-        ensure!(transform.access_budget.is_none(), "access_budget is not supported");
-        ensure!(
-            transform.shared_access_budget_indices.is_empty(),
-            "shared_access_budget_indices are not supported"
-        );
         ensure!(!transform.dst_node_ids.contains(&0), "0 is not a valid dst_node_id");
         Ok(())
     })?;

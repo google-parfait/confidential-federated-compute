@@ -79,10 +79,10 @@ archive_override(
 
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-ff6Or2fRFw+1GexVtBzRqBmeuV1b2YfhOUrDoJmWMLk=",
+    integrity = "sha256-v0FFMxIF5So4vBCinqbf60A19ttXDWT+3gYrqBzipO4=",
     patches = ["//third_party/federated_compute:libcppbor.patch"],
-    strip_prefix = "federated-compute-a289f7b318efa5945da57080a84783fc53e4cf6f",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/a289f7b318efa5945da57080a84783fc53e4cf6f.tar.gz"],
+    strip_prefix = "federated-compute-aad3eb5a4b6d075978ec3e126a036be6022f6012",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/aad3eb5a4b6d075978ec3e126a036be6022f6012.tar.gz"],
 )
 
 archive_override(

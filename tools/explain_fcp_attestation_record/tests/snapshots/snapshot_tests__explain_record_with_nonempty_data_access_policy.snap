@@ -261,21 +261,22 @@ Note: this layer describes the "KMS" application binary, which is generally a bu
 ========== DATA ACCESS POLICY ==========
 ========================================
 
-Downloading data access policy from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:531d52aa02120d38babd7e60a59749b91cee397b97400d301e18853a0231632c.
+Downloading data access policy from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:802fac1b5ec361d41d12a38908cbc306728ecf6202aa7a56c777e7bb626f15d6.
 
-The data access policy allows 3 data transformations and defines 2 shared access budgets.
+The data access policy allows 1 logical pipelines.
+Logical pipeline 'dp_pipeline' has 1 instances.
+Printing details of pipeline instance #0:
+The data access policy allows 1 data transformations.
 
 >>>>> Transform #0 <<<<<
-Source blob ID: 0
+Source node IDs: [0, 1, 2]
+Destination node IDs: [1, 2, 3]
 
-Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
-- limited access budget (at most 2 times): the transform may only access its source blob this many times.
-- limited shared access budget #1 (at most 2 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
+Configuration constraints: /fcp.confidentialcompute.FedSqlContainerConfigConstraints
+FedSqlContainerConfigConstraints { epsilon: 1.0987, delta: 1e-8, dp_column_names: [], dp_windowing_schedule: None, intrinsic_uri: "", access_budget: Some(AccessBudget { kind: Some(Times(1)) }), intrinsic_uris: ["fedsql_dp_group_by", "differential_privacy_tensor_aggregator_bundle"], max_output_partitions: None, min_agg_window_minutes: 0 }
 
 Application matcher for this transform:
-- Tag: app2
-- Binary configuration restrictions:
-  StructMatcher { fields: [FieldMatcher { path: "field_a", matcher: Some(ValueMatcher { kind: Some(NumberValue(NumberMatcher { kind: Some(Eq(1234.0)) })) }) }] }
+- Tag: 
 - Applications performing this transform must provide attestation evidence that can be verified with the following reference values:
 
 Reference values for the Oak Containers stack
@@ -334,82 +335,3 @@ configuration:
 
 
 Note: we don't print sigstore.dev links for the binary digests in this list of reference values. You can construct such links manually using the following template: https://search.sigstore.dev/?hash=${SHA2_256_HASH}. For the root layer stage0 binary the reference value will list the SHA2-384 hash, in which case the SHA2-256 hash of that SHA2-384 hash should be used for the sigstore.dev lookup.
-
->>>>> Transform #1 <<<<<
-Source blob ID: 0
-
-Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
-- limited shared access budget #1 (at most 2 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
-
-Application matcher for this transform:
-- Tag: app2
-- Binary configuration restrictions:
-  StructMatcher { fields: [FieldMatcher { path: "field_b", matcher: Some(ValueMatcher { kind: Some(NumberValue(NumberMatcher { kind: Some(Eq(5678.0)) })) }) }] }
-- Applications performing this transform must provide attestation evidence that can be verified with the following reference values:
-
-Reference values for the Oak Containers stack
-_____ Root Layer _____
-
-The attestation must be rooted in an AMD SEV-SNP TEE.
-
-The reference values describing this layer are printed below.
-
-amd_sev:
-  milan:
-    minimum:
-      boot_loader: 1
-      tee: 2
-      snp: 3
-      microcode: 4
-      fmc: 0
-  allow_debug: false
-  check_vcek_cert_expiry: false
-  stage0:
-    skip: {}
-
-
-_____ Kernel Layer _____
-
-The reference values describing this layer are printed below.
-
-kernel:
-  skip: {}
-kernel_cmd_line_text:
-  skip: {}
-init_ram_fs:
-  skip: {}
-memory_map:
-  skip: {}
-acpi:
-  skip: {}
-
-
-_____ System Layer _____
-
-The reference values describing this layer are printed below.
-
-system_image:
-  skip: {}
-
-
-_____ Container Layer _____
-
-The reference values describing this layer are printed below.
-
-binary:
-  skip: {}
-configuration:
-  skip: {}
-
-
-Note: we don't print sigstore.dev links for the binary digests in this list of reference values. You can construct such links manually using the following template: https://search.sigstore.dev/?hash=${SHA2_256_HASH}. For the root layer stage0 binary the reference value will list the SHA2-384 hash, in which case the SHA2-256 hash of that SHA2-384 hash should be used for the sigstore.dev lookup.
-
->>>>> Transform #2 <<<<<
-Source blob ID: 1
-
-Access budgets: the transform's access to its source blob is gated by *all* of the following access rules:
-- limited shared access budget #0 (at most 5 times): this and other transforms sharing this same budget may only access their source blobs this many times combined.
-
-Application matcher for this transform:
-- Tag: app3
-- Any application can perform this transform (attestation evidence will not be verified).
