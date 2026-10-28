@@ -19,8 +19,10 @@
 #include <map>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "cc/crypto/signing_key.h"
 #include "containers/crypto.h"
 #include "fcp/base/random_token.h"
@@ -41,6 +43,11 @@ static constexpr int kRecoveryInfoEncryptionKeyIndex = 0;
 static constexpr int kReleaseValueEncryptionKeyIndex = 1;
 static constexpr int kNumEncryptionKeys = 2;
 
+// DataParser is thread-safe. The Resolve* methods may run concurrently with
+// each other and with the methods that read and advance the private state
+// (ReleaseUnencrypted, SaveRecoveryInfo, RestoreRecoveryInfo), which are
+// serialized so that each release token's initial state matches the state that
+// KMS stored for the previous release.
 class DataParser {
  public:
   DataParser(confidential_federated_compute::Decryptor* blob_decryptor,
@@ -63,16 +70,20 @@ class DataParser {
   ResolveBlobIdToDict(std::string blob_id);
 
   // Wraps the data in a release token and sends it to untrusted space.
-  absl::Status ReleaseUnencrypted(std::string data, std::string key);
+  absl::Status ReleaseUnencrypted(std::string data, std::string key)
+      ABSL_LOCKS_EXCLUDED(private_state_mutex_);
 
   absl::Status SaveRecoveryInfo(
       std::string recovery_value, std::string recovery_key,
-      std::vector<std::pair<std::string, std::string>> release_queue);
+      std::vector<std::pair<std::string, std::string>> release_queue)
+      ABSL_LOCKS_EXCLUDED(private_state_mutex_);
 
-  absl::StatusOr<std::string> RestoreRecoveryInfo(std::string recovery_key);
+  absl::StatusOr<std::string> RestoreRecoveryInfo(std::string recovery_key)
+      ABSL_LOCKS_EXCLUDED(private_state_mutex_);
 
  private:
-  absl::Status ReleaseUnencryptedInternal(std::string data, std::string key);
+  absl::Status ReleaseUnencryptedInternal(std::string data, std::string key)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(private_state_mutex_);
 
   Decryptor* blob_decryptor_;
   std::unique_ptr<
@@ -83,8 +94,12 @@ class DataParser {
   std::string invocation_id_;
 
   std::vector<std::string> reencryption_keys_;
+  // Serializes the operations that read or advance `private_state_`. It is held
+  // across the corresponding Write RPCs so that KMS observes state transitions
+  // in the order in which they were created.
+  absl::Mutex private_state_mutex_;
   // Private state.
-  PrivateState* private_state_;
+  PrivateState* private_state_ ABSL_PT_GUARDED_BY(private_state_mutex_);
   // The signing key handle used to sign the final result.
   std::shared_ptr<oak::crypto::SigningKeyHandle> signing_key_handle_;
 };

@@ -23,6 +23,8 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -116,14 +118,18 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
                    std::shared_ptr<oak::crypto::SigningKeyHandle>>(
       m, "SigningKeyHandle");
 
+  // String arguments are taken by value: pybind11 converts them from Python
+  // into strings that it owns, which are then moved into DataParser. Nothing
+  // below refers to Python-owned memory while the GIL is released.
   pybind11::class_<DataParser>(m, "DataParser")
       .def(pybind11::init<Decryptor*, std::string, std::vector<std::string>,
                           std::string, std::string, PrivateState*,
                           std::shared_ptr<oak::crypto::SigningKeyHandle>>())
       .def("resolve_blob_id_to_tensor",
-           [](DataParser& self, std::string& blob_id, std::string& key) {
+           [](DataParser& self, std::string blob_id, std::string key) {
              pybind11::gil_scoped_release release;
-             auto tensor = self.ResolveBlobIdToTensor(blob_id, key);
+             auto tensor =
+                 self.ResolveBlobIdToTensor(std::move(blob_id), std::move(key));
              if (!tensor.ok()) {
                throw std::runtime_error("Failed to fetch Tensor: " +
                                         std::string(tensor.status().message()));
@@ -132,13 +138,13 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
            })
       .def(
           "resolve_blob_id_to_numpy_dict",
-          [](DataParser& self, const std::string& blob_id) {
+          [](DataParser& self, std::string blob_id) {
             absl::StatusOr<absl::flat_hash_map<
                 std::string, tensorflow_federated::aggregation::Tensor>>
                 dict_or;
             {
               pybind11::gil_scoped_release release;
-              dict_or = self.ResolveBlobIdToDict(blob_id);
+              dict_or = self.ResolveBlobIdToDict(std::move(blob_id));
             }
             if (!dict_or.ok()) {
               throw std::runtime_error("Failed to fetch numpy dict: " +
@@ -150,28 +156,46 @@ PYBIND11_EMBEDDED_MODULE(data_parser, m) {
             }
             return result;
           })
-      .def("release_unencrypted",
-           [](DataParser& self, std::string& data, std::string& key) {
-             auto result = self.ReleaseUnencrypted(data, key);
-             if (!result.ok()) {
-               throw std::runtime_error("Failed to release data: " +
-                                        std::string(result.message()));
-             }
-           })
-      .def("save_recovery_info",
-           [](DataParser& self, std::string& recovery_info,
-              std::string& recovery_key,
-              std::vector<std::pair<std::string, std::string>>& release_queue) {
-             auto result = self.SaveRecoveryInfo(recovery_info, recovery_key,
-                                                 release_queue);
-             if (!result.ok()) {
-               throw std::runtime_error("Failed to save recovery info: " +
-                                        std::string(result.message()));
-             }
-           })
+      // The following bindings release the GIL while they block on signing,
+      // encryption, and Write/Read RPCs to the untrusted space, so that other
+      // Python threads (e.g. a training loop that releases results in the
+      // background) can keep running. This is safe because DataParser
+      // serializes these operations, which read and advance the private
+      // state, with its own mutex.
+      .def(
+          "release_unencrypted",
+          [](DataParser& self, std::string data, std::string key) {
+            absl::Status result =
+                self.ReleaseUnencrypted(std::move(data), std::move(key));
+            if (!result.ok()) {
+              throw std::runtime_error("Failed to release data: " +
+                                       std::string(result.message()));
+            }
+          },
+          pybind11::call_guard<pybind11::gil_scoped_release>())
+      .def(
+          "save_recovery_info",
+          [](DataParser& self, std::string recovery_info,
+             std::string recovery_key,
+             std::vector<std::pair<std::string, std::string>> release_queue) {
+            absl::Status result = self.SaveRecoveryInfo(
+                std::move(recovery_info), std::move(recovery_key),
+                std::move(release_queue));
+            if (!result.ok()) {
+              throw std::runtime_error("Failed to save recovery info: " +
+                                       std::string(result.message()));
+            }
+          },
+          pybind11::call_guard<pybind11::gil_scoped_release>())
       .def("restore_recovery_info",
-           [](DataParser& self, std::string& recovery_key) -> pybind11::object {
-             auto result = self.RestoreRecoveryInfo(recovery_key);
+           [](DataParser& self, std::string recovery_key) -> pybind11::object {
+             absl::StatusOr<std::string> result;
+             {
+               // Not a call_guard: building the Python return value below
+               // requires the GIL.
+               pybind11::gil_scoped_release release;
+               result = self.RestoreRecoveryInfo(std::move(recovery_key));
+             }
              if (!result.ok()) {
                if (absl::IsNotFound(result.status())) {
                  return pybind11::none();

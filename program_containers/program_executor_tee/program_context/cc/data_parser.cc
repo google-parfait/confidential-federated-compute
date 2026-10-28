@@ -14,7 +14,9 @@
 
 #include "program_executor_tee/program_context/cc/data_parser.h"
 
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -146,11 +148,16 @@ DataParser::ResolveBlobIdToDict(std::string blob_id) {
 
 absl::Status DataParser::ReleaseUnencryptedInternal(std::string data,
                                                     std::string key) {
+  // The release token moves KMS from the current committed state to a newly
+  // committed one. Read the current state before committing the new state
+  // (function argument evaluation order is unspecified).
+  std::optional<std::string> src_state = private_state_->GetState();
+  std::string dst_state = private_state_->CommitNewState();
   WriteRequest write_request;
   ABSL_RETURN_IF_ERROR(CreateWriteRequestForRelease(
       &write_request, *signing_key_handle_,
       reencryption_keys_[kReleaseValueEncryptionKeyIndex], key, data,
-      private_state_->GetState(), private_state_->CommitNewState()));
+      std::move(src_state), std::move(dst_state)));
 
   ClientContext client_context;
   WriteResponse response;
@@ -167,6 +174,7 @@ absl::Status DataParser::ReleaseUnencryptedInternal(std::string data,
 }
 
 absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
+  absl::MutexLock lock(private_state_mutex_);
   if (private_state_->HasPriorSaveRecovery()) {
     return absl::FailedPreconditionError(
         "Releasing unencrypted information without associated recovery "
@@ -179,6 +187,7 @@ absl::Status DataParser::ReleaseUnencrypted(std::string data, std::string key) {
 absl::Status DataParser::SaveRecoveryInfo(
     std::string recovery_value, std::string recovery_key,
     std::vector<std::pair<std::string, std::string>> release_queue) {
+  absl::MutexLock lock(private_state_mutex_);
   if (!private_state_->AllowSaveRecovery()) {
     return absl::FailedPreconditionError(
         "Saving recovery information is unsupported if a previous program "
@@ -293,8 +302,13 @@ absl::StatusOr<std::string> DataParser::RestoreRecoveryInfo(
         "Failed to parse RecoveryInfo from decrypted data.");
   }
 
-  if (!private_state_->AttemptRestoreRecovery(blob_header.blob_id(),
-                                              recovery_info)) {
+  bool restored;
+  {
+    absl::MutexLock lock(private_state_mutex_);
+    restored = private_state_->AttemptRestoreRecovery(blob_header.blob_id(),
+                                                      recovery_info);
+  }
+  if (!restored) {
     return absl::InvalidArgumentError(
         "The recovery info does not match the expected state for recovery.");
   }
