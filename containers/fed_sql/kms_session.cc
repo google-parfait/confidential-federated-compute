@@ -43,7 +43,6 @@
 #include "fcp/protos/confidentialcompute/fed_sql_container_config.pb.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/repeated_ptr_field.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"

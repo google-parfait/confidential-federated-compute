@@ -28,7 +28,6 @@
 #include "google/protobuf/descriptor.pb.h"
 #include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/message.h"
-#include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/federated_compute_checkpoint_builder.h"

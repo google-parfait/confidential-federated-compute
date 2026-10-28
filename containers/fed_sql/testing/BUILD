@@ -33,7 +33,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
         "@federated_compute//fcp/confidentialcompute:constants",
-        "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/base",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:mutable_string_data",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/core:tensor",
         "@org_tensorflow_federated//tensorflow_federated/cc/core/impl/aggregation/protocol:federated_compute_checkpoint_builder",
