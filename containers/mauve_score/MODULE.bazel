@@ -38,7 +38,7 @@ bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf"
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "riegeli", version = "0.0.0-20250706-c4d1f27", repo_name = "com_google_riegeli")
 bazel_dep(name = "rules_cc", version = "0.2.18")
-bazel_dep(name = "rules_distroless", version = "0.5.1")
+bazel_dep(name = "rules_distroless", version = "0.6.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.1.0")
@@ -123,12 +123,23 @@ register_toolchains("@llvm_toolchain//:all")
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
-    name = "python_3_13_slim_bookworm",
-    digest = "sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530",
-    image = "python",
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
     platforms = ["linux/amd64"],
 )
-use_repo(oci, "python_3_13_slim_bookworm", "python_3_13_slim_bookworm_linux_amd64")
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
+
+apt = use_extension(
+    "@rules_distroless//apt:extensions.bzl",
+    "apt",
+)
+apt.install(
+    name = "bookworm",
+    lock = "//:bookworm.lock.json",
+    manifest = "//:bookworm.yaml",
+)
+use_repo(apt, "bookworm")
 
 # Define the PIP deps we need from the requirements_lock.txt file.
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")

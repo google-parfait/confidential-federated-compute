@@ -14,13 +14,13 @@
 #ifndef CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_MAUVE_SCORE_PY_MAUVE_DELEGATE_H_
 #define CONFIDENTIAL_FEDERATED_COMPUTE_CONTAINERS_MAUVE_SCORE_PY_MAUVE_DELEGATE_H_
 
-#include <pybind11/embed.h>
-
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "containers/python/embedded_python.h"
 #include "fcp/protos/confidentialcompute/mauve_score_config.pb.h"
 
 namespace confidential_federated_compute::mauve_score {
@@ -34,7 +34,8 @@ ComputeMauveViaPython(const std::vector<std::vector<float>>& real_embeddings,
                       const std::vector<std::vector<float>>& synth_embeddings);
 
 // Manages the Python interpreter lifecycle.
-// Must be created on the main thread before any gRPC calls.
+// Must be created on the main thread before any gRPC calls. The binary must
+// link the embedded_python_env target :py_env.
 class PyRuntimeManager {
  public:
   PyRuntimeManager();
@@ -45,7 +46,7 @@ class PyRuntimeManager {
   absl::Status ImportLib();
 
  private:
-  PyThreadState* tstate_;
+  std::unique_ptr<python::EmbeddedInterpreter> interpreter_;
 };
 
 }  // namespace confidential_federated_compute::mauve_score

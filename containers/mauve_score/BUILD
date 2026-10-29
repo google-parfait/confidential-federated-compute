@@ -15,7 +15,7 @@
 """BUILD rules for the MAUVE score container."""
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
-load("@confidential-federated-compute//containers/bazel:gen_python_path.bzl", "gen_python_path")
+load("@confidential-federated-compute//containers/bazel:embedded_python_env.bzl", "embedded_python_env")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
@@ -116,20 +116,44 @@ cc_test(
     ],
 )
 
+# The Python environment of the container: the hermetic Python toolchain and
+# the Python code it runs. Link it into every binary and test that runs Python.
+embedded_python_env(
+    name = "py_env",
+    deps = [":compute_mauve_score_lib"],
+)
+
 cc_library(
     name = "py_mauve_delegate",
     srcs = ["py_mauve_delegate.cc"],
     hdrs = ["py_mauve_delegate.h"],
-    data = [":compute_mauve_score_lib"],
     deps = [
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@confidential-federated-compute//containers/python:embedded_python",
         "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
         "@pybind11",
-        "@rules_python//python/cc:current_py_cc_libs",
+    ],
+)
+
+cc_test(
+    name = "py_mauve_delegate_test",
+    srcs = ["py_mauve_delegate_test.cc"],
+    # LeakSanitizer reports the objects that CPython, pybind11 and the Python
+    # packages' native code never free.
+    tags = ["noasan"],
+    deps = [
+        ":py_env",
+        ":py_mauve_delegate",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@federated_compute//fcp/protos/confidentialcompute:mauve_score_config_cc_proto",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -169,6 +193,7 @@ cc_binary(
     srcs = ["main.cc"],
     deps = [
         ":mauve_score_fn",
+        ":py_env",
         ":py_mauve_delegate",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -190,6 +215,9 @@ cc_test(
     deps = [
         ":budget",
         ":mauve_score_fn",
+        # mauve_score_fn links EmbeddedInterpreter, so the test needs an
+        # environment even though it doesn't run Python.
+        ":py_env",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
@@ -219,18 +247,16 @@ pkg_tar(
     include_runfiles = True,
 )
 
-gen_python_path(
-    name = "py_path",
-    cc_binary_name = "main",
-    py_deps = [":compute_mauve_score_lib"],
-)
-
 oci_image(
     name = "oci_image",
-    base = "@python_3_13_slim_bookworm_linux_amd64",
+    base = "@distroless_cc_debian12_base",
     entrypoint = ["/main"],
-    env = ":py_path",
-    tars = [":tar"],
+    tars = [
+        # Debian packages that the distroless base image doesn't have, such as
+        # zlib. See bookworm.yaml.
+        "@bookworm//:flat",
+        ":tar",
+    ],
 )
 
 oci_runtime_bundle(

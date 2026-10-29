@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("@bazel_toolchains//rules/exec_properties:exec_properties.bzl", "create_rbe_exec_properties_dict")
-load("@confidential-federated-compute//containers/bazel:gen_python_path.bzl", "gen_python_path")
+load("@confidential-federated-compute//containers/bazel:embedded_python_env.bzl", "embedded_python_env")
 load("@oak//bazel:defs.bzl", "oci_runtime_bundle")
 load("@pip//:requirements.bzl", "requirement")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
@@ -68,20 +68,57 @@ cc_library(
     ],
 )
 
+# The Python environment of the container: the hermetic Python toolchain and
+# the Python code it runs. Link it into every binary and test that runs Python.
+embedded_python_env(
+    name = "py_env",
+    deps = [":generate_embedding"],
+)
+
 cc_library(
     name = "py_model_delegate",
     srcs = ["py_model_delegate.cc"],
     hdrs = ["py_model_delegate.h"],
-    data = [":generate_embedding"],
     deps = [
         ":model_delegate",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@confidential-federated-compute//containers/python:embedded_python",
         "@pybind11",
-        "@rules_python//python/cc:current_py_cc_libs",
+    ],
+)
+
+cc_test(
+    name = "py_model_delegate_test",
+    size = "medium",
+    srcs = ["py_model_delegate_test.cc"],
+    env = {
+        # The test creates its model locally. Make sure that nothing tries to
+        # download one.
+        "HF_HUB_OFFLINE": "1",
+        # Run the model on the calling thread. ThreadSanitizer doesn't see how
+        # the thread pools of OpenMP (used by torch) and of the tokenizers
+        # library synchronize, and reports data races in them.
+        "OMP_NUM_THREADS": "1",
+        "TOKENIZERS_PARALLELISM": "false",
+    },
+    # LeakSanitizer reports the objects that CPython, pybind11 and the Python
+    # packages' native code never free.
+    tags = ["noasan"],
+    deps = [
+        ":py_env",
+        ":py_model_delegate",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@pybind11",
     ],
 )
 
@@ -189,6 +226,7 @@ cc_binary(
     srcs = ["main.cc"],
     deps = [
         ":embedding_fn",
+        ":py_env",
         ":py_model_delegate",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -206,18 +244,16 @@ pkg_tar(
     include_runfiles = True,
 )
 
-gen_python_path(
-    name = "py_path",
-    cc_binary_name = "main",
-    py_deps = [":generate_embedding"],
-)
-
 oci_image(
     name = "oci_image",
-    base = "@python_3_13_slim_bookworm_linux_amd64",
+    base = "@distroless_cc_debian12_base",
     entrypoint = ["/main"],
-    env = ":py_path",
-    tars = [":tar"],
+    tars = [
+        # Debian packages that the distroless base image doesn't have, such as
+        # zlib. See bookworm.yaml.
+        "@bookworm//:flat",
+        ":tar",
+    ],
 )
 
 oci_runtime_bundle(
