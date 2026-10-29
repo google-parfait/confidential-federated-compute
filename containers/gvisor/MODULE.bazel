@@ -1,0 +1,167 @@
+# Copyright 2026 Google LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+module(
+    name = "gvisor",
+    version = "0.0.1",
+    compatibility_level = 1,
+)
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Keep sorted
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
+bazel_dep(name = "bazel_skylib", version = "1.9.0")
+bazel_dep(name = "confidential-federated-compute")
+local_path_override(
+    module_name = "confidential-federated-compute",
+    path = "../..",
+)
+
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+bazel_dep(name = "grpc", version = "1.80.0", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "reproc", version = "14.2.5")
+bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "rules_distroless", version = "0.9.4")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_oci", version = "2.2.6")
+bazel_dep(name = "rules_pkg", version = "1.1.0")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "toolchains_llvm", version = "1.11.3")
+bazel_dep(name = "oak")
+archive_override(
+    module_name = "oak",
+    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
+    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
+    urls = ["https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz"],
+)
+
+bazel_dep(name = "federated-compute", repo_name = "federated_compute")
+archive_override(
+    module_name = "federated-compute",
+    integrity = "sha256-v0FFMxIF5So4vBCinqbf60A19ttXDWT+3gYrqBzipO4=",
+    patches = ["@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch"],
+    strip_prefix = "federated-compute-aad3eb5a4b6d075978ec3e126a036be6022f6012",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/aad3eb5a4b6d075978ec3e126a036be6022f6012.tar.gz"],
+)
+
+fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")
+use_repo(fcp_deps, "bazel_toolchains", "org_tensorflow_federated")
+
+single_version_override(
+    module_name = "abseil-cpp",
+    version = "20260526.0",
+)
+
+single_version_override(
+    module_name = "toolchains_llvm",
+    patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
+)
+
+http_archive(
+    name = "sysroot",
+    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
+)
+
+# gVisor release. runsc needs the gvisor-bin/ sidecars (e.g. gvisor_sentry)
+# next to it, so the whole archive is installed into the image.
+http_archive(
+    name = "gvisor_release",
+    build_file_content = """
+filegroup(
+    name = "all_files",
+    srcs = ["runsc"] + glob(["gvisor-bin/**"]),
+    visibility = ["//visibility:public"],
+)
+""",
+    sha256 = "096589d2d6078ba4caa26aa0200932f571aa5da9d08a5156b98ab1d93fa54468",
+    urls = ["https://storage.googleapis.com/gvisor/releases/release/20261026.0/x86_64/gvisor.tar.bz2"],
+)
+
+# The repo-wide .bazelrc.common sets a rules_python flag, so a Python toolchain
+# must be registered even though this container has no Python code.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    configure_coverage_tool = False,
+    ignore_root_user_error = True,
+    python_version = "3.13",
+)
+
+# Set up cc toolchain
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+llvm.toolchain(
+    name = "llvm_toolchain",
+    llvm_version = "19.1.0",
+)
+llvm.sysroot(
+    name = "llvm_toolchain",
+    label = "@sysroot",
+    targets = ["linux-x86_64"],
+)
+use_repo(llvm, "llvm_toolchain")
+
+register_toolchains("@llvm_toolchain//:all")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_cc_debian12_base",
+    digest = "sha256:6714977f9f02632c31377650c15d89a7efaebf43bab0f37c712c30fc01edb973",
+    image = "gcr.io/distroless/cc-debian12",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
+
+# The same Debian snapshot as the C++ toolchain's sysroot
+# (toolchains/sysroot/MODULE.bazel).
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = ["amd64"],
+    components = ["main"],
+    suites = ["bookworm"],
+    types = ["deb"],
+    uris = [
+        "https://snapshot-cloudflare.debian.org/archive/debian/20260815T000000Z",
+        "https://snapshot.debian.org/archive/debian/20260815T000000Z",
+    ],
+)
+apt.sources_list(
+    architectures = ["amd64"],
+    components = ["main"],
+    suites = ["bookworm-security"],
+    types = ["deb"],
+    uris = [
+        "https://snapshot-cloudflare.debian.org/archive/debian-security/20260815T000000Z",
+        "https://snapshot.debian.org/archive/debian-security/20260815T000000Z",
+    ],
+)
+apt.install(
+    dependency_set = "bookworm",
+    packages = [
+        # /bin/true etc. for runsc probes and debugging.
+        "coreutils",
+        # bsdtar (libarchive) unpacks the customer rootfs layer. Unlike GNU tar
+        # running as root, it keeps directories writable until the end, so it
+        # doesn't need CAP_DAC_OVERRIDE for read-only directories.
+        "libarchive-tools",
+    ],
+    suites = [
+        "bookworm",
+        "bookworm-security",
+    ],
+)
+use_repo(apt, "bookworm")

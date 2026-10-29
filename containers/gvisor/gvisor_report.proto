@@ -1,0 +1,45 @@
+// Copyright 2026 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package confidential_federated_compute.gvisor;
+
+// Outcome of one helper process that the container runs (bsdtar or runsc).
+message ProcessReport {
+  // Set if the process couldn't be started. The other fields are unset then.
+  string spawn_error = 1;
+  // Exit code, or 128 + signal number if a signal killed the process.
+  int32 exit_code = 2;
+  bool timed_out = 3;
+  // The last bytes of the process's stdout and stderr.
+  bytes stdout_tail = 4;
+  bytes stderr_tail = 5;
+}
+
+// Facts collected once, when the container unpacks the customer layer. The
+// container logs them: they describe the environment and the layer, never an
+// input.
+message SetupReport {
+  // Kernel and namespace facts that decide whether gVisor can run inside the
+  // Oak container, keyed by name (for example "uid_map").
+  map<string, string> environment = 1;
+  // Size of the customer rootfs layer tar.
+  uint64 layer_bytes = 2;
+  double unpack_seconds = 3;
+  // `runsc --version` and `runsc do /bin/true`. These separate "runsc can't
+  // start" from problems with the customer's bundle.
+  ProcessReport runsc_version = 4;
+  ProcessReport runsc_do_true = 5;
+}
