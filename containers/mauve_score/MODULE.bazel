@@ -38,7 +38,7 @@ bazel_dep(name = "protobuf", version = "33.1", repo_name = "com_google_protobuf"
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "riegeli", version = "0.0.0-20250706-c4d1f27", repo_name = "com_google_riegeli")
 bazel_dep(name = "rules_cc", version = "0.2.18")
-bazel_dep(name = "rules_distroless", version = "0.6.1")
+bazel_dep(name = "rules_distroless", version = "0.9.4")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_oci", version = "2.2.6")
 bazel_dep(name = "rules_pkg", version = "1.1.0")
@@ -48,9 +48,9 @@ bazel_dep(name = "toolchains_llvm", version = "1.11.3")
 bazel_dep(name = "oak")
 archive_override(
     module_name = "oak",
-    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
-    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
-    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
+    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
+    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
+    urls = ["https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz"],
 )
 
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
@@ -130,14 +130,39 @@ oci.pull(
 )
 use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
 
-apt = use_extension(
-    "@rules_distroless//apt:extensions.bzl",
-    "apt",
+# The same Debian snapshot as the C++ toolchain's sysroot
+# (toolchains/sysroot/MODULE.bazel).
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = ["amd64"],
+    components = ["main"],
+    suites = ["bookworm"],
+    types = ["deb"],
+    uris = [
+        "https://snapshot-cloudflare.debian.org/archive/debian/20260815T000000Z",
+        "https://snapshot.debian.org/archive/debian/20260815T000000Z",
+    ],
+)
+apt.sources_list(
+    architectures = ["amd64"],
+    components = ["main"],
+    suites = ["bookworm-security"],
+    types = ["deb"],
+    uris = [
+        "https://snapshot-cloudflare.debian.org/archive/debian-security/20260815T000000Z",
+        "https://snapshot.debian.org/archive/debian-security/20260815T000000Z",
+    ],
 )
 apt.install(
-    name = "bookworm",
-    lock = "//:bookworm.lock.json",
-    manifest = "//:bookworm.yaml",
+    dependency_set = "bookworm",
+    packages = [
+        # The manylinux wheels of numpy, scipy and pillow link libz.so.1.
+        "zlib1g",
+    ],
+    suites = [
+        "bookworm",
+        "bookworm-security",
+    ],
 )
 use_repo(apt, "bookworm")
 

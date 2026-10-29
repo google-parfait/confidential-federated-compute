@@ -66,9 +66,9 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
-    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
-    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
+    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
+    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
+    urls = ["https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz"],
 )
 
 archive_override(

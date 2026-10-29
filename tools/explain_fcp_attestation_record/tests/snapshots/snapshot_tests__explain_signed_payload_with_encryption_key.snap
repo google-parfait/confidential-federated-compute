@@ -36,6 +36,7 @@ sev_snp:
   product: 1
   hardware_id: d434c30555a180626ade858fb3efdb214c08596a812f188620af8a7cebce86f4b24f4f1a53b5cd9f22cfeaffb3527fc07b51b6270910cf694e7c9bfc582d3a49
   vmpl: 0
+  alias_check_complete: true
 
 
 Note: binaries for this layer are generally provided by the Oak project (https://github.com/project-oak/oak).

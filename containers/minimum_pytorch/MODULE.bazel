@@ -26,7 +26,7 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "confidential-federated-compute")
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 bazel_dep(name = "oak")
-bazel_dep(name = "rules_distroless", version = "0.6.1")
+bazel_dep(name = "rules_distroless", version = "0.9.4")
 bazel_dep(name = "rules_oci", version = "2.2.7")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 bazel_dep(name = "rules_python", version = "2.0.2")
@@ -55,9 +55,9 @@ archive_override(
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-I7HdbkLQ7fhDRap2RUzVYq3W97QNOpKc5TXo0fl/gcQ=",
-    strip_prefix = "oak-f7393a196c9158c28cba2f9b37994a5a349083d9",
-    urls = ["https://github.com/project-oak/oak/archive/f7393a196c9158c28cba2f9b37994a5a349083d9.tar.gz"],
+    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
+    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
+    urls = ["https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz"],
 )
 
 single_version_override(
@@ -112,14 +112,33 @@ oci.pull(
 )
 use_repo(oci, "distroless_cc_debian12_base", "distroless_cc_debian12_base_linux_amd64")
 
-apt = use_extension(
-    "@rules_distroless//apt:extensions.bzl",
-    "apt",
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = ["amd64"],
+    components = [
+        "contrib",
+        "main",
+    ],
+    suites = ["bookworm"],
+    types = ["deb"],
+    uris = [
+        "https://snapshot-cloudflare.debian.org/archive/debian/20260815T000000Z",
+        "https://snapshot.debian.org/archive/debian/20260815T000000Z",
+    ],
 )
+
+# Install some basic packages, including those needed by the aspect-build/rules_py launcher.
 apt.install(
-    name = "bookworm",
-    lock = "//:bookworm.lock.json",
-    manifest = "//:bookworm.yaml",
+    dependency_set = "bookworm",
+    packages = [
+        "apt",
+        "bash",
+        "coreutils",
+        "gawk",
+        "grep",
+        "sed",
+    ],
+    suites = ["bookworm"],
 )
 use_repo(apt, "bookworm")
 

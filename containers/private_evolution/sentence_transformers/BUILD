@@ -250,7 +250,7 @@ oci_image(
     entrypoint = ["/main"],
     tars = [
         # Debian packages that the distroless base image doesn't have, such as
-        # zlib. See bookworm.yaml.
+        # zlib. See MODULE.bazel.
         "@bookworm//:flat",
         ":tar",
     ],
