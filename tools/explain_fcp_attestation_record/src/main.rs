@@ -66,6 +66,13 @@ struct TargetParam {
     /// E.g. this can be the payload of an access policy Oak endorsement.
     /// (see
     /// https://github.com/google-parfait/confidential-federated-compute/inspecting_endorsements).
+    ///
+    /// Note: Older `DataAccessPolicy` protos that use removed legacy fields
+    /// (such as top-level `transforms` or `shared_access_budgets`, or removed
+    /// `PipelineVariantPolicy`, `Transform`, or `ApplicationMatcher` fields)
+    /// may only be processable with older versions of this tool. Please try
+    /// rerunning this tool at or before commit
+    /// c67be377a26229dee36046cb1902616076b4d37f.
     #[arg(long, value_parser = parse_path_or_stdin)]
     pub access_policy: Option<PathOrStdin>,
 

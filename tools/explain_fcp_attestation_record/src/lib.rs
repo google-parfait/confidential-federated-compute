@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use access_policy_proto::fcp::confidentialcompute::{
-    AccessBudget, DataAccessPolicy, PipelineVariantPolicy, access_budget::Kind, data_access_policy,
-    pipeline_variant_policy,
-};
+use access_policy_proto::fcp::confidentialcompute::{DataAccessPolicy, PipelineVariantPolicy};
 use anyhow::{Context, bail, ensure};
 use fed_sql_container_config_proto::fcp::confidentialcompute::FedSqlContainerConfigConstraints;
 use futures_util::TryFutureExt as _;
@@ -227,7 +224,13 @@ pub fn explain_data_access_policy(
     policy: &DataAccessPolicy,
 ) -> anyhow::Result<()> {
     if policy.pipelines.is_empty() {
-        return explain_legacy_data_access_policy(buf, policy);
+        writeln!(
+            buf,
+            "This policy doesn't authorize any pipelines. It is possible you are trying to \
+            inspect an older policy using now-deprecated fields. Consider re-running this tool \
+            at or before commit c67be377a26229dee36046cb1902616076b4d37f."
+        )?;
+        return Ok(());
     }
 
     writeln!(buf, "The data access policy allows {} logical pipelines.", policy.pipelines.len(),)?;
@@ -241,19 +244,14 @@ pub fn explain_data_access_policy(
     Ok(())
 }
 
-// TODO: This is almost exactly the same as the
-// `explain_legacy_data_access_policy` function, except that the input message
-// types don't match (even though they both have the same fields).
 fn explain_pipeline_variant_policy(
     buf: &mut dyn std::fmt::Write,
     policy: &PipelineVariantPolicy,
 ) -> anyhow::Result<()> {
     writeln!(
         buf,
-        "The data access policy allows {} data transformations and defines {} shared access \
-        budgets.",
+        "The data access policy allows {} data transformations.",
         policy.transforms.len(),
-        policy.shared_access_budgets.len(),
     )?;
 
     for (i, transform) in policy.transforms.iter().enumerate() {
@@ -280,120 +278,9 @@ fn explain_pipeline_variant_policy(
             writeln!(buf, "Configuration constraints: None")?;
         }
         writeln!(buf)?;
-        explain_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
-        writeln!(buf)?;
         let app_matcher = transform.application.clone().unwrap_or_default();
         writeln!(buf, "Application matcher for this transform:")?;
         writeln!(buf, "- Tag: {}", app_matcher.tag.unwrap_or_default())?;
-        if let Some(config_properties) = app_matcher.config_properties {
-            writeln!(buf, "- Binary configuration restrictions:")?;
-            // Note: we simply print the StructMatcher's debug output for now. We may want
-            // to format this information more clearly in the future.
-            writeln!(buf, "  {:?}", config_properties)?;
-        }
-        if let Some(ref_vals) = app_matcher.reference_values {
-            let ref_vals = ReferenceValues::decode(ref_vals.encode_to_vec().as_slice())?;
-            writeln!(
-                buf,
-                "- Applications performing this transform must provide attestation evidence that \
-                can be verified with the following reference values:"
-            )?;
-            writeln!(buf)?;
-            writeln!(buf, "{}", ref_vals.title()?)?;
-            writeln!(buf, "{}", ref_vals.description()?)?;
-            writeln!(buf)?;
-        } else {
-            writeln!(
-                buf,
-                "- Any application can perform this transform (attestation evidence will not be \
-                verified)."
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
-/// Writes a human readable explanation for the given access budget to the given
-/// buffer.
-fn explain_transform_access_budgets(
-    buf: &mut dyn std::fmt::Write,
-    transform: &pipeline_variant_policy::Transform,
-    transform_idx: usize,
-    shared_budgets: &[AccessBudget],
-) -> Result<(), anyhow::Error> {
-    writeln!(
-        buf,
-        "Access budgets: the transform's access to its source blob is gated by *all* of the \
-        following access rules:"
-    )?;
-    let mut access_restricted = false;
-    if let Some(access_budget) = &transform.access_budget {
-        access_restricted |= process_budget_access_time_with(access_budget, |times| {
-            writeln!(
-                buf,
-                "- limited access budget (at most {times} times): the transform may only access its source \
-                blob this many times."
-            )?;
-            Ok(())
-        })?;
-    }
-    for shared_budget_id in &transform.shared_access_budget_indices {
-        let shared_budget = shared_budgets.get(*shared_budget_id as usize).with_context(|| {
-            format!(
-                "transform {transform_idx} references non-existent shared access budget \
-                        {shared_budget_id}"
-            )
-        })?;
-        access_restricted |= process_budget_access_time_with(shared_budget, |shared_times| {
-            writeln!(
-                buf,
-                "- limited shared access budget #{shared_budget_id} (at most {shared_times} \
-                times): this and other transforms sharing this same budget may only access their \
-                source blobs this many times combined."
-            )?;
-            Ok(())
-        })?;
-    }
-    if !access_restricted {
-        writeln!(
-            buf,
-            "- no access budget restrictions apply: this transform may access the source blob an \
-            unlimited number of times."
-        )?;
-    }
-    Ok(())
-}
-
-fn explain_legacy_data_access_policy(
-    buf: &mut dyn std::fmt::Write,
-    policy: &DataAccessPolicy,
-) -> anyhow::Result<()> {
-    // TODO: Update to print new-style policies correctly.
-    writeln!(
-        buf,
-        "The data access policy allows {} data transformations and defines {} shared access \
-        budgets.",
-        policy.transforms.len(),
-        policy.shared_access_budgets.len(),
-    )?;
-
-    for (i, transform) in policy.transforms.iter().enumerate() {
-        writeln!(buf)?;
-        writeln!(buf, ">>>>> Transform #{i} <<<<<",)?;
-        writeln!(buf, "Source blob ID: {}", transform.src)?;
-        writeln!(buf)?;
-        explain_legacy_transform_access_budgets(buf, transform, i, &policy.shared_access_budgets)?;
-        writeln!(buf)?;
-        let app_matcher = transform.application.clone().unwrap_or_default();
-        writeln!(buf, "Application matcher for this transform:")?;
-        writeln!(buf, "- Tag: {}", app_matcher.tag.unwrap_or_default())?;
-        if let Some(config_properties) = app_matcher.config_properties {
-            writeln!(buf, "- Binary configuration restrictions:")?;
-            // Note: we simply print the StructMatcher's debug output for now. We may want
-            // to format this information more clearly in the future.
-            writeln!(buf, "  {:?}", config_properties)?;
-        }
         if let Some(ref_vals) = app_matcher.reference_values {
             let ref_vals = ReferenceValues::decode(ref_vals.encode_to_vec().as_slice())?;
             writeln!(
@@ -422,57 +309,6 @@ fn explain_legacy_data_access_policy(
         }
     }
 
-    Ok(())
-}
-
-/// Writes a human readable explanation for the given access budget to the given
-/// buffer.
-fn explain_legacy_transform_access_budgets(
-    buf: &mut dyn std::fmt::Write,
-    transform: &data_access_policy::Transform,
-    transform_idx: usize,
-    shared_budgets: &[AccessBudget],
-) -> Result<(), anyhow::Error> {
-    writeln!(
-        buf,
-        "Access budgets: the transform's access to its source blob is gated by *all* of the \
-        following access rules:"
-    )?;
-    let mut access_restricted = false;
-    if let Some(access_budget) = &transform.access_budget {
-        access_restricted |= process_budget_access_time_with(access_budget, |times| {
-            writeln!(
-                buf,
-                "- limited access budget (at most {times} times): the transform may only access its source \
-                blob this many times."
-            )?;
-            Ok(())
-        })?;
-    }
-    for shared_budget_id in &transform.shared_access_budget_indices {
-        let shared_budget = shared_budgets.get(*shared_budget_id as usize).with_context(|| {
-            format!(
-                "transform {transform_idx} references non-existent shared access budget \
-                        {shared_budget_id}"
-            )
-        })?;
-        access_restricted |= process_budget_access_time_with(shared_budget, |shared_times| {
-            writeln!(
-                buf,
-                "- limited shared access budget #{shared_budget_id} (at most {shared_times} \
-                times): this and other transforms sharing this same budget may only access their \
-                source blobs this many times combined."
-            )?;
-            Ok(())
-        })?;
-    }
-    if !access_restricted {
-        writeln!(
-            buf,
-            "- no access budget restrictions apply: this transform may access the source blob an \
-            unlimited number of times."
-        )?;
-    }
     Ok(())
 }
 
@@ -505,28 +341,6 @@ async fn explain_pipeline_configuration(
 
     let access_policy = DataAccessPolicy::decode(&response[..])?;
     explain_data_access_policy(buf, &access_policy)
-}
-
-/// Convenience function that calls the callback `f` with number of times the
-/// [`AccessBudget`] allows a piece of data to be accessed by a given
-/// application, if and only if the budget actually restricts the number of
-/// accesses. The callback is not invoked if the budget does not restrict
-/// the number of accesses.
-///
-/// Returns whether the number of accesses are restricted by the budget.
-fn process_budget_access_time_with<F>(budget: &AccessBudget, mut f: F) -> anyhow::Result<bool>
-where
-    F: FnMut(u32) -> anyhow::Result<()>,
-{
-    match budget.kind {
-        Some(Kind::Times(times)) => {
-            f(times)?;
-            Ok(true)
-        }
-        // Note: an access budget that allows unlimited access doesn't really restrict access, so we
-        // don't need to report such access policies.
-        None => Ok(false),
-    }
 }
 
 /// Writes a human readable explanation for a SignedPayload signature structure

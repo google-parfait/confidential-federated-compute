@@ -532,7 +532,6 @@ async fn register_pipeline_invocation_success() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -540,7 +539,6 @@ async fn register_pipeline_invocation_success() {
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     };
 
     let request = RegisterPipelineInvocationRequest {
@@ -574,7 +572,6 @@ async fn register_pipeline_invocation_with_invalid_policies() {
 
     let variant_policy = PipelineVariantPolicy {
         transforms: vec![Transform { src_node_ids: vec![1], ..Default::default() }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -591,12 +588,10 @@ async fn register_pipeline_invocation_with_invalid_policies() {
 
                         ..Default::default()
                     }],
-                    ..Default::default()
                 }],
             },
         )]
         .into(),
-        ..Default::default()
     };
 
     let request = RegisterPipelineInvocationRequest {
@@ -639,7 +634,6 @@ async fn register_pipeline_invocation_with_keys_in_response() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies1 = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -647,7 +641,6 @@ async fn register_pipeline_invocation_with_keys_in_response() {
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     }
     .encode_to_vec();
     // Create a second AuthorizedLogicalPipelinePolicies message to ensure that
@@ -658,7 +651,6 @@ async fn register_pipeline_invocation_with_keys_in_response() {
             ("other".into(), LogicalPipelinePolicy::default()),
         ]
         .into(),
-        ..Default::default()
     }
     .encode_to_vec();
 
@@ -778,9 +770,7 @@ async fn authorize_confidential_transform_success() {
                 ..Default::default()
             }),
             config_constraints: Some(Any { value: b"config".into(), ..Default::default() }),
-            ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -788,7 +778,6 @@ async fn authorize_confidential_transform_success() {
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     };
 
     let request = RegisterPipelineInvocationRequest {
@@ -881,7 +870,6 @@ async fn authorize_confidential_transform_with_keyset_keys() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -889,7 +877,6 @@ async fn authorize_confidential_transform_with_keyset_keys() {
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     }
     .encode_to_vec();
 
@@ -1025,7 +1012,6 @@ async fn authorize_confidential_transform_without_initial_uploads_omits_all_keys
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -1033,7 +1019,6 @@ async fn authorize_confidential_transform_without_initial_uploads_omits_all_keys
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     }
     .encode_to_vec();
 
@@ -1157,7 +1142,6 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -1165,7 +1149,6 @@ async fn authorize_confidential_transform_with_intermediate_keys() {
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     };
 
     let request = RegisterPipelineInvocationRequest {
@@ -1234,7 +1217,6 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -1242,7 +1224,6 @@ async fn authorize_confidential_transform_endorses_transform_signing_key() {
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     };
 
     let request = RegisterPipelineInvocationRequest {
@@ -1358,7 +1339,6 @@ async fn authorize_confidential_transform_with_invalid_invocation_id() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
 
     let request = AuthorizeConfidentialTransformRequest {
@@ -1391,7 +1371,6 @@ async fn authorize_confidential_transform_without_registered_invocation() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
 
     let request = AuthorizeConfidentialTransformRequest {
@@ -1425,7 +1404,6 @@ async fn authorize_confidential_transform_without_authorization() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let logical_pipeline_policies = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -1433,7 +1411,6 @@ async fn authorize_confidential_transform_without_authorization() {
             LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
         )]
         .into(),
-        ..Default::default()
     };
 
     let request = RegisterPipelineInvocationRequest {
@@ -1524,7 +1501,6 @@ where
                     LogicalPipelinePolicy { instances: vec![policy.clone()] },
                 )]
                 .into(),
-                ..Default::default()
             }
             .encode_to_vec(),
         );
@@ -1661,7 +1637,6 @@ async fn release_results_success() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (logical_pipeline_state, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
@@ -1749,7 +1724,6 @@ async fn release_results_sets_expiration_from_intermediates_ttl() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) = register_and_authorize_with_options(
         &kms,
@@ -1838,7 +1812,6 @@ async fn release_results_sets_expiration_from_key_ttl() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) = register_and_authorize_with_options(
         &kms,
@@ -1905,7 +1878,6 @@ async fn release_results_sets_expiration_from_existing_logical_pipeline_state() 
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
 
     for (src_state, dst_state, invocation_ttl) in
@@ -1978,7 +1950,6 @@ async fn release_results_fails_with_src_state_not_matching() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
@@ -2027,7 +1998,6 @@ async fn release_results_fails_with_src_state_none_not_matching() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
@@ -2096,7 +2066,6 @@ async fn release_results_fails_with_missing_invocation_id() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
@@ -2143,7 +2112,6 @@ async fn release_results_fails_with_modified_release_token() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
@@ -2191,7 +2159,6 @@ async fn release_results_fails_with_undecryptable_release_token() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
@@ -2236,7 +2203,6 @@ async fn release_results_fails_with_modified_signing_key_endorsement() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let (_, protected_response, _, signing_key_endorsement) =
         register_and_authorize(&kms, "test", &variant_policy)
@@ -2289,7 +2255,6 @@ async fn release_results_blocks_reused_policies() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let policies: Vec<Vec<u8>> = (0..3)
         .map(|i| {
@@ -2303,7 +2268,6 @@ async fn release_results_blocks_reused_policies() {
                     (format!("policy-{i}"), LogicalPipelinePolicy::default()),
                 ]
                 .into(),
-                ..Default::default()
             }
             .encode_to_vec()
         })
@@ -2398,7 +2362,6 @@ async fn release_results_blocklist_entries_expire() {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     };
     let policies: Vec<_> = (0..3)
         .map(|i| {
@@ -2412,7 +2375,6 @@ async fn release_results_blocklist_entries_expire() {
                     (format!("policy-{i}"), LogicalPipelinePolicy::default()),
                 ]
                 .into(),
-                ..Default::default()
             }
             .encode_to_vec()
         })

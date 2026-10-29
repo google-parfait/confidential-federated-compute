@@ -4,4 +4,4 @@ expression: buf
 ---
 Downloading data access policy from https://federatedcompute-pa.googleapis.com/data/transparency/sha2-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.
 
-The data access policy allows 0 data transformations and defines 0 shared access budgets.
+This policy doesn't authorize any pipelines. It is possible you are trying to inspect an older policy using now-deprecated fields. Consider re-running this tool at or before commit c67be377a26229dee36046cb1902616076b4d37f.

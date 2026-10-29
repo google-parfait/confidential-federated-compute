@@ -39,7 +39,6 @@ fn build_test_variant_policy(src: u32) -> PipelineVariantPolicy {
             }),
             ..Default::default()
         }],
-        ..Default::default()
     }
 }
 
@@ -57,7 +56,6 @@ fn validate_pipeline_invocation_policies_success() {
             },
         )]
         .into(),
-        ..Default::default()
     };
 
     expect_that!(
@@ -83,7 +81,6 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
                 LogicalPipelinePolicy { instances: vec![variant] },
             )]
             .into(),
-            ..Default::default()
         }
     }
 
@@ -97,43 +94,6 @@ fn validate_pipeline_invocation_policies_fails_with_unsupported_fields() {
             &[build_authorized_logical_pipeline_policies(variant_policy).encode_to_vec()],
         ),
         err(displays_as(contains_substring("reference_values are required")))
-    );
-
-    // ApplicationMatcher.config_properties is not supported.
-    let mut variant_policy = build_test_variant_policy(1);
-    variant_policy.transforms[0].application.as_mut().unwrap().config_properties =
-        Some(Default::default());
-    expect_that!(
-        validate_pipeline_invocation_policies(
-            LOGICAL_PIPELINE_NAME,
-            &variant_policy.encode_to_vec(),
-            &[build_authorized_logical_pipeline_policies(variant_policy).encode_to_vec()],
-        ),
-        err(displays_as(contains_substring("config_properties is not supported")))
-    );
-
-    // Transform.access_budget is not supported.
-    let mut variant_policy = build_test_variant_policy(1);
-    variant_policy.transforms[0].access_budget = Some(Default::default());
-    expect_that!(
-        validate_pipeline_invocation_policies(
-            LOGICAL_PIPELINE_NAME,
-            &variant_policy.encode_to_vec(),
-            &[build_authorized_logical_pipeline_policies(variant_policy).encode_to_vec()],
-        ),
-        err(displays_as(contains_substring("access_budget is not supported")))
-    );
-
-    // Transform.shared_access_budget_indices is not supported.
-    let mut variant_policy = build_test_variant_policy(1);
-    variant_policy.transforms[0].shared_access_budget_indices = vec![0];
-    expect_that!(
-        validate_pipeline_invocation_policies(
-            LOGICAL_PIPELINE_NAME,
-            &variant_policy.encode_to_vec(),
-            &[build_authorized_logical_pipeline_policies(variant_policy).encode_to_vec()],
-        ),
-        err(displays_as(contains_substring("shared_access_budget_indices are not supported")))
     );
 
     // dst_node_id 0 is not allowed.
@@ -157,7 +117,6 @@ fn validate_pipeline_invocation_policies_fails_without_logical_pipeline_policy()
             LogicalPipelinePolicy { instances: vec![build_test_variant_policy(1)] },
         )]
         .into(),
-        ..Default::default()
     };
 
     expect_that!(
@@ -186,7 +145,6 @@ fn validate_pipeline_invocation_policies_fails_without_variant_policy() {
             ),
         ]
         .into(),
-        ..Default::default()
     };
 
     expect_that!(
@@ -209,7 +167,6 @@ fn validate_pipeline_invocation_policies_fails_without_all_policies_matching() {
             LogicalPipelinePolicy { instances: vec![build_test_variant_policy(1)] },
         )]
         .into(),
-        ..Default::default()
     };
     let logical_pipeline_policies2 = AuthorizedLogicalPipelinePolicies {
         pipelines: [(
@@ -217,7 +174,6 @@ fn validate_pipeline_invocation_policies_fails_without_all_policies_matching() {
             LogicalPipelinePolicy { instances: vec![build_test_variant_policy(2)] },
         )]
         .into(),
-        ..Default::default()
     };
 
     expect_that!(
@@ -244,7 +200,6 @@ fn validate_pipeline_invocation_policies_fails_with_malformed_policies() {
             LogicalPipelinePolicy { instances: vec![build_test_variant_policy(1)] },
         )]
         .into(),
-        ..Default::default()
     }
     .encode_to_vec();
 
@@ -291,10 +246,8 @@ fn authorize_transform_success() {
                 application: Some(ApplicationMatcher {
                     tag: Some("tagA".into()),
                     reference_values: Some(get_test_reference_values()),
-                    ..Default::default()
                 }),
                 config_constraints: Some(Any { value: b"config1".into(), ..Default::default() }),
-                ..Default::default()
             },
             Transform {
                 src_node_ids: vec![5, 6],
@@ -302,13 +255,10 @@ fn authorize_transform_success() {
                 application: Some(ApplicationMatcher {
                     tag: Some("tagB".into()),
                     reference_values: Some(get_test_reference_values()),
-                    ..Default::default()
                 }),
                 config_constraints: Some(Any { value: b"config2".into(), ..Default::default() }),
-                ..Default::default()
             },
         ],
-        ..Default::default()
     };
 
     expect_that!(
@@ -337,7 +287,6 @@ fn authorize_transform_without_explicit_reference_values() {
             application: Some(ApplicationMatcher { reference_values: None, ..Default::default() }),
             ..Default::default()
         }],
-        ..Default::default()
     };
 
     expect_that!(
@@ -381,7 +330,6 @@ fn authorize_transform_returns_first_match() {
                 ..Default::default()
             },
         ],
-        ..Default::default()
     };
 
     expect_that!(
@@ -420,10 +368,8 @@ fn authorize_transform_fails_without_match() {
                 application: Some(ApplicationMatcher {
                     tag: Some("tagA".into()),
                     reference_values: Some(get_test_reference_values()),
-                    ..Default::default()
                 }),
                 config_constraints: Some(Any { value: b"config1".into(), ..Default::default() }),
-                ..Default::default()
             },
             Transform {
                 src_node_ids: vec![5, 6],
@@ -431,13 +377,10 @@ fn authorize_transform_fails_without_match() {
                 application: Some(ApplicationMatcher {
                     tag: Some("tagB".into()),
                     reference_values: Some(ReferenceValues::default()), // Empty RV are invalid.
-                    ..Default::default()
                 }),
                 config_constraints: Some(Any { value: b"config2".into(), ..Default::default() }),
-                ..Default::default()
             },
         ],
-        ..Default::default()
     };
 
     expect_that!(

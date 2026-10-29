@@ -102,6 +102,7 @@ rust_library(
     tags = ["no-clippy"],
     deps = [
         ":access_policy_prost_proto",
+        ":fed_sql_container_config_prost_proto",
         ":messages_prost_proto",
         ":signed_endorsements_prost_proto",
         ":verification_record_prost_proto",
@@ -109,6 +110,7 @@ rust_library(
         "@crates//:rustls",
         "@oak//oak_proto_rust",
         "@oak_crates_index//:prost",
+        "@oak_crates_index//:prost-types",
         "@oak_crates_index//:sha2",
     ],
 )
@@ -181,5 +183,6 @@ proto_library(
     deps = [
         "@federated_compute//fcp/protos/confidentialcompute:access_policy_proto",
         "@oak//proto/attestation:evidence_proto",
+        "@oak//proto/attestation:reference_value_proto",
     ],
 )
