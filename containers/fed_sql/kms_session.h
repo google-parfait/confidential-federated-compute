@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -128,9 +127,6 @@ class KmsFedSqlSession final : public confidential_federated_compute::Session {
   // Handles FINALIZATION_TYPE_PARTITION type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Partition(
       Context& context, uint64_t num_partitions);
-  // Handles FINALIZATION_TYPE_REPORT type of Finalize.
-  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> Report(
-      Context& context);
   // Handles FINALIZATION_TYPE_REPORT_PARTITION type of Finalize.
   absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> ReportPartition(
       Context& context);

@@ -103,7 +103,6 @@ using ::fcp::confidentialcompute::FedSqlContainerInitializeConfiguration;
 using ::fcp::confidentialcompute::
     FedSqlContainerPartitionedOutputFinalizedState;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
-using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PRIVATE_STATE;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_SERIALIZE;
 using ::fcp::confidentialcompute::FinalizeRequest;
@@ -1764,7 +1763,7 @@ TEST_F(FedSqlServerTest, ConfigureWriteReportEncryptedInput) {
 
   // Finalize the request.
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
+    type: FINALIZATION_TYPE_REPORT_PARTITION
   )pb");
   SessionRequest finalize_request;
   SessionResponse finalize_response;
@@ -1908,7 +1907,10 @@ TEST_F(FedSqlServerTest, SessionFailsIfSqlResultCannotBeAggregated) {
                        HasSubstr("Failed to accumulate SQL query results")));
 }
 
-TEST_F(FedSqlServerTest, RemoveExpiredKeysFromBudget) {
+TEST_F(FedSqlServerTest, InitializeComputesExpiredKeysFromBudget) {
+  // The pipeline private state written by InitializeTransform() has budget
+  // buckets for "expired_key" and "foo", but only "foo" is among the active
+  // key ids authorized by KMS. So "expired_key" must be reported as expired.
   InitializeTransform();
   grpc::ClientContext context;
   auto stream = ConfigureDefaultSession(&context);
@@ -1917,55 +1919,45 @@ TEST_F(FedSqlServerTest, RemoveExpiredKeysFromBudget) {
   BlobHeader header;
   header.set_blob_id(StoreBigEndian(absl::MakeUint128(1, 0)));
   header.set_key_id(key_id_);
-  auto request1 = CreateDefaultEncryptedWriteRequest(
-      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({1, 3}, {4, 0}),
+  SessionRequest write_request = CreateDefaultEncryptedWriteRequest(
+      AGGREGATION_TYPE_ACCUMULATE, BuildFedSqlGroupByCheckpoint({1}, {4}),
       header.SerializeAsString());
-  SessionResponse response1;
-  ASSERT_TRUE(stream->Write(request1));
-  ASSERT_TRUE(stream->Read(&response1));
-  ASSERT_TRUE(response1.has_write());
+  SessionResponse write_response;
+  ASSERT_TRUE(stream->Write(write_request));
+  ASSERT_TRUE(stream->Read(&write_response));
+  ASSERT_EQ(write_response.write().status().code(), Code::OK);
 
   // Commit the range.
-  SessionRequest request2;
-  SessionResponse response2;
   FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
     range { start: 1 end: 3 }
   )pb");
-  request2.mutable_commit()->mutable_configuration()->PackFrom(commit_config);
-  ASSERT_TRUE(stream->Write(request2));
-  ASSERT_TRUE(stream->Read(&response2));
-  ASSERT_TRUE(response2.has_commit());
+  SessionRequest commit_request;
+  SessionResponse commit_response;
+  commit_request.mutable_commit()->mutable_configuration()->PackFrom(
+      commit_config);
+  ASSERT_TRUE(stream->Write(commit_request));
+  ASSERT_TRUE(stream->Read(&commit_response));
 
-  // Finalize the session which should remove `expired_key` from the budget.
+  // Serialize the session, which bundles the RangeTracker with the result.
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
+    type: FINALIZATION_TYPE_SERIALIZE
   )pb");
   SessionRequest finalize_request;
-  SessionResponse read_response;
   SessionResponse finalize_response;
   finalize_request.mutable_finalize()->mutable_configuration()->PackFrom(
       finalize_config);
   ASSERT_TRUE(stream->Write(finalize_request));
-  ASSERT_TRUE(stream->Read(&read_response));
-  ASSERT_TRUE(read_response.has_read());
   ASSERT_TRUE(stream->Read(&finalize_response));
-  ASSERT_TRUE(finalize_response.has_finalize());
+  ASSERT_TRUE(finalize_response.has_read());
 
-  absl::StatusOr<ReleaseToken> release_token =
-      ReleaseToken::Decode(finalize_response.finalize().release_token());
-  ASSERT_THAT(release_token, IsOk());
-  BudgetState new_state;
-  EXPECT_TRUE(new_state.ParseFromString(release_token->dst_state.value()));
-  EXPECT_THAT(new_state, EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
-                buckets {
-                  key: "key_id"
-                  budget: 4
-                  consumed_range_start: 1
-                  consumed_range_end: 3
-                }
-                buckets { key: "foo" budget: 3 }
-                time_budget {}
-              )pb"));
+  std::string decrypted_data =
+      Decrypt(finalize_response.read().first_response_metadata(),
+              finalize_response.read().data());
+  auto range_tracker = UnbundleRangeTracker(decrypted_data);
+  ASSERT_THAT(range_tracker, IsOk());
+  EXPECT_THAT(range_tracker->GetKeys(), UnorderedElementsAre("key_id"));
+  EXPECT_THAT(range_tracker->GetExpiredKeys(),
+              UnorderedElementsAre("expired_key"));
 }
 
 TEST_F(FedSqlServerTest, SessionWriteRequestNoKmsAssociatedData) {
@@ -2103,7 +2095,7 @@ TEST_F(FedSqlServerTest, SessionExecutesSqlQueryAndAggregation) {
   ASSERT_TRUE(stream->Read(&commit_response));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
+    type: FINALIZATION_TYPE_REPORT_PARTITION
   )pb");
   SessionRequest finalize_request;
   SessionResponse finalize_response;
@@ -2243,7 +2235,7 @@ TEST_F(FedSqlServerTest, SessionMergesAndReports) {
   ASSERT_TRUE(stream->Read(&write_response));
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
+    type: FINALIZATION_TYPE_REPORT_PARTITION
   )pb");
   SessionRequest finalize_request;
   SessionResponse finalize_response;
@@ -2331,13 +2323,13 @@ TEST_F(FedSqlServerTest, SerializeZeroInputsProducesEmptyOutput) {
   ASSERT_EQ(col_values->AsSpan<int64_t>().at(0), 3);
 }
 
-TEST_F(FedSqlServerTest, ReportZeroInputsReturnsFailedPrecondition) {
+TEST_F(FedSqlServerTest, ReportPartitionZeroInputsReturnsInvalidArgument) {
   InitializeTransform();
   grpc::ClientContext context;
   auto stream = ConfigureDefaultSession(&context);
 
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
+    type: FINALIZATION_TYPE_REPORT_PARTITION
   )pb");
   SessionRequest finalize_request;
   SessionResponse finalize_response;
@@ -2346,7 +2338,8 @@ TEST_F(FedSqlServerTest, ReportZeroInputsReturnsFailedPrecondition) {
   ASSERT_TRUE(stream->Write(finalize_request));
   ASSERT_FALSE(stream->Read(&finalize_response));
   EXPECT_THAT(FromGrpcStatus(stream->Finish()),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("no inputs were aggregated")));
 }
 
 TEST_F(FedSqlServerTest, SessionIgnoresUnparseableInputs) {
@@ -2391,7 +2384,7 @@ TEST_F(FedSqlServerTest, SessionIgnoresUnparseableInputs) {
 
   // Finalize the session.
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
+    type: FINALIZATION_TYPE_REPORT_PARTITION
   )pb");
   SessionRequest finalize_request;
   SessionResponse finalize_response;
@@ -2480,7 +2473,7 @@ TEST_F(FedSqlServerTest, SessionIgnoresUndecryptableInputs) {
 
   // Finalize the session.
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
-    type: FINALIZATION_TYPE_REPORT
+    type: FINALIZATION_TYPE_REPORT_PARTITION
   )pb");
   SessionRequest finalize_request;
   SessionResponse finalize_response;

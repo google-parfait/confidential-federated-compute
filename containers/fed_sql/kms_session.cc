@@ -76,7 +76,6 @@ using ::fcp::confidentialcompute::
     FedSqlContainerPartitionedOutputFinalizedState;
 using ::fcp::confidentialcompute::FedSqlContainerWriteConfiguration;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_PARTITION;
-using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PARTITION;
 using ::fcp::confidentialcompute::FINALIZATION_TYPE_REPORT_PRIVATE_STATE;
@@ -259,10 +258,7 @@ absl::Status KmsFedSqlSession::CheckBudgetAndUpdateRangeTracker(
     if (header.key_id().empty()) {
       return absl::InvalidArgumentError("Empty key id in BlobHeader.");
     }
-    auto blob_id = LoadBigEndian<absl::uint128>(header.blob_id());
-    uint64_t blob_id_high64 = absl::Uint128High64(blob_id);
-    if (!private_state_->budget.HasRemainingBudget(header.key_id(),
-                                                   blob_id_high64)) {
+    if (!private_state_->budget.HasRemainingBudget(header.key_id())) {
       return absl::FailedPreconditionError(
           absl::StrCat("No budget remaining for key id: ",
                        absl::BytesToHexString(header.key_id())));
@@ -594,9 +590,6 @@ absl::StatusOr<FinalizeResponse> KmsFedSqlSession::Finalize(
   }
 
   switch (finalize_config.type()) {
-    case fcp::confidentialcompute::FINALIZATION_TYPE_REPORT: {
-      return Report(context);
-    }
     case FINALIZATION_TYPE_SERIALIZE: {
       return Serialize(context);
     }
@@ -705,30 +698,6 @@ absl::Status KmsFedSqlSession::ValidateAggregationWindow(
     }
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
-KmsFedSqlSession::Report(Context& context) {
-  // Validate the aggregation window meets the minimum duration constraint.
-  ABSL_RETURN_IF_ERROR(ValidateAggregationWindow(range_tracker_));
-
-  // Update the private state
-  ABSL_RETURN_IF_ERROR(private_state_->budget.UpdateBudget(range_tracker_));
-
-  // Produce the final report.
-  ABSL_ASSIGN_OR_RETURN(absl::Cord checkpoint, BuildReport());
-  // Emit the final encrypted result.
-  std::string release_token;
-  if (!context.EmitReleasable(
-          /* reencryption_key_index*/ 1, std::string(checkpoint.Flatten()),
-          private_state_->initial_state,
-          private_state_->budget.SerializeAsString(), release_token)) {
-    return absl::InternalError("Failed to emit releasable final result.");
-  }
-
-  FinalizeResponse response;
-  *response.mutable_release_token() = std::move(release_token);
-  return response;
 }
 
 absl::StatusOr<fcp::confidentialcompute::FinalizeResponse>
