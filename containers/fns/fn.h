@@ -32,7 +32,7 @@ namespace confidential_federated_compute::fns {
 // Common base class for functions.
 //
 // Fn is not intended to be subclassed directly by consumers. Instead, use one
-// of the concrete base classes: DoFn, MapFn, BatchDoFn etc.
+// of the concrete base classes: DoFn, MapFn, BatchDoFn, GlobalReduceFn etc.
 class Fn : public confidential_federated_compute::Session {
  public:
   ~Fn() override = default;
@@ -237,6 +237,7 @@ class Fn : public confidential_federated_compute::Session {
   friend class DoFn;
   friend class MapFn;
   friend class BatchDoFn;
+  friend class GlobalReduceFn;
   friend class MockFn;  // Test-only: allows MockFn to subclass Fn.
 };
 

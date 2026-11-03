@@ -23,6 +23,7 @@ cc_library(
     name = "privacy_id_utils",
     srcs = ["privacy_id_utils.cc"],
     hdrs = ["privacy_id_utils.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//containers:big_endian",
         "@com_google_absl//absl/strings",

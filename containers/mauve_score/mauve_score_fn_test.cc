@@ -388,6 +388,20 @@ class MauveScoreFnTest : public testing::Test {
     return request;
   }
 
+  // Commits `fn` and returns the result of finalizing it, which computes the
+  // MAUVE score.
+  absl::StatusOr<fcp::confidentialcompute::FinalizeResponse> CommitAndFinalize(
+      Fn& fn) {
+    EXPECT_THAT(fn.Commit(fcp::confidentialcompute::CommitRequest(), context_),
+                IsOk());
+    return fn.Finalize({}, {}, context_);
+  }
+
+  // Expects the MAUVE score to be released.
+  void ExpectRelease() {
+    EXPECT_CALL(context_, EmitReleasable(0, _, _, _, _)).WillOnce(Return(true));
+  }
+
   std::unique_ptr<FnFactory> factory_;
   std::unique_ptr<Fn> fn_;
   StrictMock<MockContext> context_;
@@ -399,22 +413,22 @@ TEST_F(MauveScoreFnTest, WriteAccumulatesData) {
   WriteRequest request;
   auto result = fn_->Write(request, ckpt, context_);
   ASSERT_THAT(result, IsOk());
-  // BatchDoFn returns raw checkpoint size, not parsed tensor size.
+  // GlobalReduceFn returns raw checkpoint size, not parsed tensor size.
   EXPECT_GT(result->committed_size_bytes(), 0);
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsInvalidData) {
-  // Write() now just buffers raw bytes — validation happens in Do().
-  auto write_result = fn_->Write(WriteRequest(), "garbage", context_);
+TEST_F(MauveScoreFnTest, FinalizeRejectsInvalidData) {
+  // Write() just buffers raw bytes — validation happens in Reduce().
+  auto write_result = fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                                 "garbage", context_);
   ASSERT_THAT(write_result, IsOk());  // Write succeeds (just buffering)
 
-  // Commit should fail when Do() tries to parse the garbage data.
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  // Finalize should fail when Reduce() tries to parse the garbage data.
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsWrongTensorDims) {
+TEST_F(MauveScoreFnTest, FinalizeRejectsWrongTensorDims) {
   FederatedComputeCheckpointBuilderFactory factory;
   auto builder = factory.Create();
   auto t =
@@ -427,57 +441,53 @@ TEST_F(MauveScoreFnTest, CommitRejectsWrongTensorDims) {
   CHECK_OK(ckpt);
 
   // Write succeeds (just buffering).
-  auto write_result = fn_->Write(WriteRequest(), std::string(*ckpt), context_);
+  auto write_result = fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                                 std::string(*ckpt), context_);
   ASSERT_THAT(write_result, IsOk());
 
-  // Commit should fail when Do() finds wrong tensor dimensions.
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  // Finalize should fail when Reduce() finds wrong tensor dimensions.
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(MauveScoreFnTest, CommitWithoutWriteReturnsError) {
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+TEST_F(MauveScoreFnTest, FinalizeWithoutWriteReturnsError) {
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsEmbeddingDimMismatchWithSynthetic) {
-  ASSERT_THAT(fn_->Write(WriteRequest(),
+TEST_F(MauveScoreFnTest, FinalizeRejectsEmbeddingDimMismatchWithSynthetic) {
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
                          BuildCheckpoint(/*batch=*/10, kDim + 1), context_),
               IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsInconsistentEmbeddingDimsAcrossBlobs) {
+TEST_F(MauveScoreFnTest, FinalizeRejectsInconsistentEmbeddingDimsAcrossBlobs) {
   // First checkpoint has the expected dimension, second one is much larger.
   // Previously this caused a heap buffer overflow when flattening embeddings.
-  ASSERT_THAT(
-      fn_->Write(WriteRequest(), BuildCheckpoint(/*batch=*/10, kDim), context_),
-      IsOk());
-  ASSERT_THAT(fn_->Write(WriteRequest(),
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                         BuildCheckpoint(/*batch=*/10, kDim), context_),
+              IsOk());
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
                          BuildCheckpoint(/*batch=*/10, kDim * 100), context_),
               IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsEmptyBatch) {
-  ASSERT_THAT(
-      fn_->Write(WriteRequest(), BuildCheckpoint(/*batch=*/0, kDim), context_),
-      IsOk());
+TEST_F(MauveScoreFnTest, FinalizeRejectsEmptyBatch) {
+  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                         BuildCheckpoint(/*batch=*/0, kDim), context_),
+              IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobIds) {
+TEST_F(MauveScoreFnTest, FinalizeRejectsDuplicateBlobIds) {
   std::string ckpt = BuildCheckpoint(/*batch=*/10, kDim);
 
   // Write two blobs with the same blob_id.
@@ -491,13 +501,12 @@ TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobIds) {
       "blob-1");
   ASSERT_THAT(fn_->Write(request2, ckpt, context_), IsOk());
 
-  // Commit should fail due to duplicate blob ids.
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  // Finalize should fail due to duplicate blob ids.
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobHeaderIds) {
+TEST_F(MauveScoreFnTest, FinalizeRejectsDuplicateBlobHeaderIds) {
   // Same BlobHeader in the associated data, different blob ID copies.
   WriteRequest request1 = CreateKeyIdWriteRequest("blob-1", "key-1");
   ASSERT_THAT(
@@ -511,13 +520,12 @@ TEST_F(MauveScoreFnTest, CommitRejectsDuplicateBlobHeaderIds) {
       fn_->Write(request2, BuildCheckpoint(/*batch=*/10, kDim), context_),
       IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Duplicate blob id detected")));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsInputWithoutAuthenticatedBlobId) {
+TEST_F(MauveScoreFnTest, FinalizeRejectsInputWithoutAuthenticatedBlobId) {
   // No BlobHeader in the associated data and no privacy ID.
   WriteRequest request;
   request.mutable_first_request_metadata()
@@ -527,13 +535,12 @@ TEST_F(MauveScoreFnTest, CommitRejectsInputWithoutAuthenticatedBlobId) {
       fn_->Write(request, BuildCheckpoint(/*batch=*/10, kDim), context_),
       IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Missing authenticated blob id")));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsKeyBasedInputWithoutKeyId) {
+TEST_F(MauveScoreFnTest, FinalizeRejectsKeyBasedInputWithoutKeyId) {
   // An unencrypted input has a blob ID but no BlobHeader with a key ID.
   WriteRequest request;
   request.mutable_first_request_metadata()->mutable_unencrypted()->set_blob_id(
@@ -542,8 +549,7 @@ TEST_F(MauveScoreFnTest, CommitRejectsKeyBasedInputWithoutKeyId) {
       fn_->Write(request, BuildCheckpoint(/*batch=*/10, kDim), context_),
       IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn_),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Missing BlobHeader with a key id")));
 }
@@ -557,7 +563,7 @@ ProtectedMetadata CreatePrivacyIdProtectedMetadata(
   return protected_metadata;
 }
 
-TEST_F(MauveScoreFnTest, CommitSucceedsWithDistinctPrivacyIds) {
+TEST_F(MauveScoreFnTest, FinalizeSucceedsWithDistinctPrivacyIds) {
   ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
                          BuildCheckpoint(/*batch=*/10, kDim),
                          CreatePrivacyIdProtectedMetadata("user-1"), context_),
@@ -567,45 +573,37 @@ TEST_F(MauveScoreFnTest, CommitSucceedsWithDistinctPrivacyIds) {
                          CreatePrivacyIdProtectedMetadata("user-2"), context_),
               IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_), IsOk());
+  ExpectRelease();
+  EXPECT_THAT(CommitAndFinalize(*fn_), IsOk());
   EXPECT_EQ(counters_["mauve-real-embeddings-count"], 30);
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsDuplicatePrivacyIds) {
-  // Different blob ids, but both blobs come from the same user.
+TEST_F(MauveScoreFnTest, WriteRejectsDuplicatePrivacyIds) {
+  // Different blob ids, but both blobs come from the same privacy unit.
   ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
                          BuildCheckpoint(/*batch=*/10, kDim),
                          CreatePrivacyIdProtectedMetadata("user-1"), context_),
               IsOk());
-  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
+  EXPECT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
                          BuildCheckpoint(/*batch=*/10, kDim),
                          CreatePrivacyIdProtectedMetadata("user-1"), context_),
-              IsOk());
-
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       ::testing::HasSubstr("Duplicate privacy id")));
+                       HasSubstr("Duplicate privacy id")));
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsMissingPrivacyIdWhenFirstInputHasOne) {
+TEST_F(MauveScoreFnTest, WriteRejectsMissingPrivacyIdWhenFirstInputHasOne) {
   ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
                          BuildCheckpoint(/*batch=*/10, kDim),
                          CreatePrivacyIdProtectedMetadata("user-1"), context_),
               IsOk());
-  ASSERT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
+  EXPECT_THAT(fn_->Write(CreateKeyIdWriteRequest("blob-2", "key-1"),
                          BuildCheckpoint(/*batch=*/10, kDim),
                          ProtectedMetadata(), context_),
-              IsOk());
-
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn_->Commit(commit_request, context_),
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       ::testing::HasSubstr("Missing PrivacyIdMetadata")));
+                       HasSubstr("Missing PrivacyIdMetadata")));
 }
 
-TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedKeyBasedBlobAndSucceeds) {
+TEST_F(MauveScoreFnTest, FinalizeIgnoresExhaustedKeyBasedBlobAndSucceeds) {
   BudgetState state;
   auto* bucket = state.add_buckets();
   bucket->set_key("exhausted-key");
@@ -622,13 +620,13 @@ TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedKeyBasedBlobAndSucceeds) {
                         BuildCheckpoint(/*batch=*/50, kDim), context_),
               IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn->Commit(commit_request, context_), IsOk());
+  ExpectRelease();
+  EXPECT_THAT(CommitAndFinalize(*fn), IsOk());
   EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
   EXPECT_EQ(counters_["mauve-real-embeddings-count"], 50);
 }
 
-TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedTimeBasedBlobAndSucceeds) {
+TEST_F(MauveScoreFnTest, FinalizeIgnoresExhaustedTimeBasedBlobAndSucceeds) {
   auto budget =
       Budget::Create(/*initial_state=*/std::nullopt, /*default_budget=*/1);
   ASSERT_THAT(budget, IsOk());
@@ -649,13 +647,13 @@ TEST_F(MauveScoreFnTest, CommitIgnoresExhaustedTimeBasedBlobAndSucceeds) {
                 CreatePrivacyIdProtectedMetadata("user-blob-2"), context_),
       IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn->Commit(commit_request, context_), IsOk());
+  ExpectRelease();
+  EXPECT_THAT(CommitAndFinalize(*fn), IsOk());
   EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
   EXPECT_EQ(counters_["mauve-real-embeddings-count"], 50);
 }
 
-TEST_F(MauveScoreFnTest, CommitFailsWhenAllKeyBasedBlobsHaveExhaustedBudget) {
+TEST_F(MauveScoreFnTest, FinalizeFailsWhenAllKeyBasedBlobsHaveExhaustedBudget) {
   BudgetState exhausted_state;
   auto* bucket = exhausted_state.add_buckets();
   bucket->set_key("key-1");
@@ -667,13 +665,13 @@ TEST_F(MauveScoreFnTest, CommitFailsWhenAllKeyBasedBlobsHaveExhaustedBudget) {
                         BuildCheckpoint(/*batch=*/10, kDim), context_),
               IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn),
               StatusIs(absl::StatusCode::kFailedPrecondition));
   EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
 }
 
-TEST_F(MauveScoreFnTest, CommitFailsWhenAllTimeBasedBlobsHaveExhaustedBudget) {
+TEST_F(MauveScoreFnTest,
+       FinalizeFailsWhenAllTimeBasedBlobsHaveExhaustedBudget) {
   auto budget =
       Budget::Create(/*initial_state=*/std::nullopt, /*default_budget=*/1);
   ASSERT_THAT(budget, IsOk());
@@ -687,13 +685,12 @@ TEST_F(MauveScoreFnTest, CommitFailsWhenAllTimeBasedBlobsHaveExhaustedBudget) {
                 CreatePrivacyIdProtectedMetadata("user-blob-1"), context_),
       IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn),
               StatusIs(absl::StatusCode::kFailedPrecondition));
   EXPECT_EQ(counters_["mauve-ignored-exhausted-budget-blobs-count"], 1);
 }
 
-TEST_F(MauveScoreFnTest, CommitRejectsTimeWindowTooShort) {
+TEST_F(MauveScoreFnTest, FinalizeRejectsTimeWindowTooShort) {
   auto fn = CreateFnWithState(/*initial_state=*/"", /*budget_times=*/5,
                               /*min_agg_window_minutes=*/60);
 
@@ -704,27 +701,22 @@ TEST_F(MauveScoreFnTest, CommitRejectsTimeWindowTooShort) {
                 CreatePrivacyIdProtectedMetadata("user-blob-1"), context_),
       IsOk());
 
-  fcp::confidentialcompute::CommitRequest commit_request;
-  EXPECT_THAT(fn->Commit(commit_request, context_),
+  EXPECT_THAT(CommitAndFinalize(*fn),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
   // Write enough embeddings for MAUVE to work (need >= 2).
   std::string ckpt = BuildCheckpoint(/*batch=*/50, kDim);
-  WriteRequest request;
-  ASSERT_THAT(fn_->Write(request, ckpt, context_), IsOk());
+  ASSERT_THAT(
+      fn_->Write(CreateKeyIdWriteRequest("blob-1", "key-1"), ckpt, context_),
+      IsOk());
 
-  // Commit should compute MAUVE and store the result.
   fcp::confidentialcompute::CommitRequest commit_request;
   auto commit_result = fn_->Commit(commit_request, context_);
   ASSERT_THAT(commit_result, IsOk());
 
-  EXPECT_EQ(counters_["mauve-score-computed"], 1);
-  EXPECT_EQ(counters_["mauve-real-embeddings-count"], 50);
-  EXPECT_EQ(counters_["mauve-synth-embeddings-count"], kNumSynthetic);
-
-  // Finalize should emit the result via EmitReleasable.
+  // Finalize should compute MAUVE and emit the result via EmitReleasable.
   EXPECT_CALL(context_, EmitReleasable(0, _, _, _, _))
       .WillOnce(
           [](int, Session::KV kv, std::optional<absl::string_view> src_state,
@@ -737,6 +729,7 @@ TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
             // First run with access_budget=5: remaining = 5-1 = 4
             EXPECT_EQ(dst.buckets_size(), 1);
             if (dst.buckets_size() == 1) {
+              EXPECT_EQ(dst.buckets(0).key(), "key-1");
               EXPECT_EQ(dst.buckets(0).budget(), 4);
             }
             release_token = "test-release-token";
@@ -745,6 +738,80 @@ TEST_F(MauveScoreFnTest, FullLifecycleSuccess) {
   auto finalize_result = fn_->Finalize({}, {}, context_);
   ASSERT_THAT(finalize_result, IsOk());
   EXPECT_EQ(finalize_result->release_token(), "test-release-token");
+
+  EXPECT_EQ(counters_["mauve-score-computed"], 1);
+  EXPECT_EQ(counters_["mauve-real-embeddings-count"], 50);
+  EXPECT_EQ(counters_["mauve-synth-embeddings-count"], kNumSynthetic);
+}
+
+TEST_F(MauveScoreFnTest, FinalizeReleasesResultAndConsumesKeyIdBudget) {
+  BudgetState initial_state;
+  auto* bucket = initial_state.add_buckets();
+  bucket->set_key("key-1");
+  bucket->set_budget(3);
+  const std::string serialized_initial_state =
+      initial_state.SerializeAsString();
+  auto fn = CreateFnWithState(serialized_initial_state);
+
+  ASSERT_THAT(fn->Write(CreateKeyIdWriteRequest("blob-1", "key-1"),
+                        BuildCheckpoint(/*batch=*/10, kDim), context_),
+              IsOk());
+  fcp::confidentialcompute::CommitRequest commit_request;
+  ASSERT_THAT(fn->Commit(commit_request, context_), IsOk());
+
+  EXPECT_CALL(context_, EmitReleasable(0, _, _, _, _))
+      .WillOnce([&serialized_initial_state](
+                    int, Session::KV kv,
+                    std::optional<absl::string_view> src_state,
+                    absl::string_view dst_state, std::string& release_token) {
+        MauveScoreResult result;
+        EXPECT_TRUE(result.ParseFromString(kv.data));
+        EXPECT_FLOAT_EQ(result.mauve_auc(), 0.95f);
+        // The release transitions from the initial state to a state in which
+        // the budget of key-1 is decremented.
+        EXPECT_THAT(src_state, ::testing::Optional(
+                                   ::testing::Eq(serialized_initial_state)));
+        BudgetState dst;
+        EXPECT_TRUE(dst.ParseFromString(std::string(dst_state)));
+        EXPECT_EQ(dst.buckets_size(), 1);
+        if (dst.buckets_size() == 1) {
+          EXPECT_EQ(dst.buckets(0).key(), "key-1");
+          EXPECT_EQ(dst.buckets(0).budget(), 2);
+        }
+        release_token = "test-release-token";
+        return true;
+      });
+  auto finalize_result = fn->Finalize({}, {}, context_);
+  ASSERT_THAT(finalize_result, IsOk());
+  EXPECT_EQ(finalize_result->release_token(), "test-release-token");
+}
+
+TEST_F(MauveScoreFnTest, FinalizeReleasesResultAndConsumesTimeWindowBudget) {
+  auto fn = CreateFnWithState(/*initial_state=*/"");
+
+  ASSERT_THAT(fn->Write(CreateTimeWindowWriteRequest("blob-1", 0, 3600),
+                        BuildCheckpoint(/*batch=*/10, kDim),
+                        CreatePrivacyIdProtectedMetadata("user-1"), context_),
+              IsOk());
+  ASSERT_THAT(fn->Write(CreateTimeWindowWriteRequest("blob-2", 3600, 7200),
+                        BuildCheckpoint(/*batch=*/10, kDim),
+                        CreatePrivacyIdProtectedMetadata("user-2"), context_),
+              IsOk());
+  fcp::confidentialcompute::CommitRequest commit_request;
+  ASSERT_THAT(fn->Commit(commit_request, context_), IsOk());
+
+  // The release consumes the time budget of the union of the input windows.
+  auto expected_budget = Budget::Create(
+      /*initial_state=*/std::nullopt, /*default_budget=*/5);
+  ASSERT_THAT(expected_budget, IsOk());
+  ASSERT_THAT(expected_budget->UpdateTimeBudget(Interval<uint64_t>(0, 7200)),
+              IsOk());
+  EXPECT_CALL(
+      context_,
+      EmitReleasable(0, _, ::testing::Eq(std::nullopt),
+                     ::testing::Eq(expected_budget->SerializeAsString()), _))
+      .WillOnce(Return(true));
+  EXPECT_THAT(fn->Finalize({}, {}, context_), IsOk());
 }
 
 }  // anonymous namespace
