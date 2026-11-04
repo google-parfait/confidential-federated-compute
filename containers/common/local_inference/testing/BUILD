@@ -31,3 +31,13 @@ cc_library(
         "@googletest//:gtest",
     ],
 )
+
+cc_library(
+    name = "test_gguf",
+    testonly = True,
+    hdrs = ["test_gguf.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llama_cpp//:ggml-base",
+    ],
+)

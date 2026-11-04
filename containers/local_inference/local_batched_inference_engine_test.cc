@@ -14,6 +14,7 @@
 
 #include "local_batched_inference_engine.h"
 
+#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -31,6 +32,7 @@
 #include "containers/common/inference/batched_inference_test_utils.h"
 #include "containers/common/local_inference/inference_model.h"
 #include "containers/common/local_inference/testing/mocks.h"
+#include "containers/common/local_inference/testing/test_gguf.h"
 #include "containers/fns/fn_factory.h"
 #include "containers/session.h"
 #include "containers/testing/mocks.h"
@@ -66,6 +68,8 @@ using ::testing::UnorderedElementsAre;
 
 using ::confidential_federated_compute::local_inference::testing::
     MockInferenceModel;
+using ::confidential_federated_compute::local_inference::testing::
+    WriteMinimalGemma4Gguf;
 using ::tensorflow_federated::aggregation::
     FederatedComputeCheckpointParserFactory;
 using ::tensorflow_federated::aggregation::Tensor;
@@ -189,6 +193,110 @@ TEST(LocalBatchedInferenceEngineProviderTest,
   )pb");
   EXPECT_THAT(provider.GetEngineForInferenceConfig(init_config, {}),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(LocalBatchedInferenceEngineProviderTest,
+     ValidLlamaGemma4E4BWeightBlobBuildsWorkingEngine) {
+  constexpr absl::string_view kWeightConfigId = "gemma4_gguf_weight_id";
+  const std::string valid_gguf_path =
+      absl::StrCat(::testing::TempDir(), "/valid_provider_gemma4.gguf");
+  ASSERT_TRUE(WriteMinimalGemma4Gguf(valid_gguf_path));
+
+  LocalBatchedInferenceEngineProvider provider;
+  InferenceInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task {
+        column_config {
+          input_column_names: "transcript"
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Topic of {transcript}" }
+      }
+      runtime_config { max_generated_tokens: 2 }
+      gemma_config {
+        model: GEMMA4_E4B
+        model_training: GEMMA_IT
+        weight_type: WEIGHT_TYPE_GGUF
+      }
+    }
+    llama_cpp_init_config {}
+  )pb");
+  init_config.mutable_llama_cpp_init_config()
+      ->set_model_weight_configuration_id(std::string(kWeightConfigId));
+
+  fns::WriteConfigurationMap valid_blob_map = {
+      {std::string(kWeightConfigId), valid_gguf_path}};
+  absl::StatusOr<std::shared_ptr<inference::BatchedInferenceEngine>> engine =
+      provider.GetEngineForInferenceConfig(init_config, valid_blob_map);
+  ASSERT_THAT(engine, IsOk());
+
+  std::vector<absl::StatusOr<std::string>> outputs =
+      (*engine)->DoBatchedInference({"hello"});
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_THAT(outputs[0], IsOk());
+}
+
+// Verify that GEMMA4_E4B GGUF configurations route through
+// BuildSessionInferenceConfiguration into InferenceModel::BuildLlamaCppModel
+// and surface an internal error when the weight file has an unsupported
+// architecture, corrupt header, or missing path.
+TEST(LocalBatchedInferenceEngineProviderTest,
+     InvalidLlamaGemma4E4BWeightBlobReturnsInternalError) {
+  constexpr absl::string_view kWeightConfigId = "gemma4_gguf_weight_id";
+  constexpr absl::string_view kExpectedLoadError =
+      "Unable to load the llama.cpp model.";
+  const std::string unsupported_arch_path =
+      absl::StrCat(::testing::TempDir(), "/unsupported_provider_arch.gguf");
+  ASSERT_TRUE(
+      WriteMinimalGemma4Gguf(unsupported_arch_path, "unsupported_arch"));
+
+  const std::string invalid_gguf_path =
+      absl::StrCat(::testing::TempDir(), "/invalid_provider_gemma4.gguf");
+  {
+    std::ofstream invalid_file(invalid_gguf_path, std::ios::binary);
+    ASSERT_TRUE(invalid_file.is_open());
+    invalid_file << "corrupt-gguf-payload";
+  }
+
+  LocalBatchedInferenceEngineProvider provider;
+  InferenceInitializeConfiguration init_config = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task {
+        column_config {
+          input_column_names: "transcript"
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Topic of {transcript}" }
+      }
+      gemma_config {
+        model: GEMMA4_E4B
+        model_training: GEMMA_IT
+        weight_type: WEIGHT_TYPE_GGUF
+      }
+    }
+    llama_cpp_init_config {}
+  )pb");
+  init_config.mutable_llama_cpp_init_config()
+      ->set_model_weight_configuration_id(std::string(kWeightConfigId));
+
+  fns::WriteConfigurationMap unsupported_arch_map = {
+      {std::string(kWeightConfigId), unsupported_arch_path}};
+  EXPECT_THAT(
+      provider.GetEngineForInferenceConfig(init_config, unsupported_arch_map),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr(kExpectedLoadError)));
+
+  fns::WriteConfigurationMap invalid_blob_map = {
+      {std::string(kWeightConfigId), invalid_gguf_path}};
+  EXPECT_THAT(
+      provider.GetEngineForInferenceConfig(init_config, invalid_blob_map),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr(kExpectedLoadError)));
+
+  fns::WriteConfigurationMap missing_file_map = {
+      {std::string(kWeightConfigId),
+       absl::StrCat(::testing::TempDir(), "/missing_provider_gemma4.gguf")}};
+  EXPECT_THAT(
+      provider.GetEngineForInferenceConfig(init_config, missing_file_map),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr(kExpectedLoadError)));
 }
 
 // The tests below run the real engine underneath the real BatchedInferenceFn,

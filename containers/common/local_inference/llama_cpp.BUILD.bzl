@@ -51,7 +51,7 @@ cc_library(
     copts = COPTS,
     local_defines = [
         "GGML_VERSION='\"0.0.0\"'",
-        "GGML_COMMIT='\"6efcd65945a98cf6883cdd9de4c8ccd8c79d219a\"'",
+        "GGML_COMMIT='\"1f368f354d9edcfea9fd6a1e0989b3e7335a050f\"'",
         "GGML_USE_CPU",
     ],
     linkopts = LINKOPTS,
@@ -82,43 +82,78 @@ cc_library(
     linkopts = LINKOPTS,
 )
 
+# Replace CMake tokens in common/build-info.cpp.in so common/common.cpp links
+# build metadata functions without a patch file.
+genrule(
+    name = "build_info",
+    srcs = ["common/build-info.cpp.in"],
+    outs = ["common/build-info.cpp"],
+    cmd = (
+        "sed" +
+        " -e 's/@LLAMA_BUILD_NUMBER@/10400/g'" +
+        " -e 's/@LLAMA_BUILD_COMMIT@/1f368f35/g'" +
+        " -e 's/@BUILD_COMPILER@/bazel/g'" +
+        " -e 's/@BUILD_TARGET@/linux-x86_64/g'" +
+        " $(execpath common/build-info.cpp.in) > $@"
+    ),
+)
+
+# Compile build-info.cpp in a separate target so -DLLAMA_COMMIT on :llama_cpp
+# does not overwrite the LLAMA_COMMIT variable name in build-info.cpp.
+cc_library(
+    name = "llama_build_info",
+    srcs = [":build_info"],
+    hdrs = ["common/build-info.h"],
+    includes = ["common"],
+    copts = COPTS,
+)
+
 cc_library(
     name = "llama_cpp",
-    srcs = glob([
-        "src/*.cpp",
-    ]) + [
-        "common/common.cpp",
-        "common/log.cpp",
-        "common/ngram-cache.cpp",
-        "common/regex-partial.cpp",
-        "common/sampling.cpp",
-        "common/speculative.cpp",
-        "common/build-info.cpp",
-    ],
+    srcs = glob(
+        [
+            "src/**/*.cpp",
+            "common/*.cpp",
+        ],
+        exclude = [
+            # Exclude optional CLI/server helpers that require external
+            # libraries (nlohmann_json, libcurl, llguidance) not linked in TEE
+            # containers.
+            "common/arg.cpp",
+            "common/chat.cpp",
+            "common/chat-auto-parser-generator.cpp",
+            "common/chat-auto-parser-helpers.cpp",
+            "common/chat-diff-analyzer.cpp",
+            "common/chat-peg-parser.cpp",
+            "common/console.cpp",
+            "common/download.cpp",
+            "common/hf-cache.cpp",
+            "common/json-partial.cpp",
+            "common/json-schema-to-grammar.cpp",
+            "common/llguidance.cpp",
+            "common/peg-parser.cpp",
+            "common/preset.cpp",
+        ],
+    ),
     hdrs = glob([
         "include/*.h",
-        "src/*.h",
-    ]) + [
-        "common/base64.hpp",
-        "common/common.h",
-        "common/log.h",
-        "common/ngram-cache.h",
-        "common/regex-partial.h",
-        "common/sampling.h",
-        "common/speculative.h",
-    ],
+        "src/**/*.h",
+        "common/*.h",
+        "common/*.hpp",
+    ]),
     includes = [
+        "common",
         "include",
+        "src",
     ],
     copts = COPTS,
     local_defines = [
-        "LLAMA_BUILD_NUMBER_DEFINED=1",
-        "LLAMA_COMMIT_DEFINED='\"be48528b\"'",
-        "LLAMA_COMPILER_DEFINED='\"bazel\"'",
-        "LLAMA_BUILD_TARGET_DEFINED='\"unknown\"'",
+        "LLAMA_VERSION='\"0.1.0-dev\"'",
+        "LLAMA_COMMIT='\"1f368f35\"'",
     ],
     deps = [
         ":ggml-base",
         ":ggml-cpu",
+        ":llama_build_info",
     ],
 )
