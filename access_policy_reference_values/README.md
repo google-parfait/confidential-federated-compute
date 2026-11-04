@@ -105,6 +105,29 @@ using TPU-powered LLMs before performing a DP histogram aggregation.
 We expect Private Compute Services' use of confidential federated computations to
 evolve over time, and any changes to these details will be reflected here.
 
+## Private Compute Services – confidential shuffling computations
+
+[Private Compute Services](https://play.google.com/store/apps/details?id=com.google.android.as.oss)
+uses the values in
+[`private_compute_services_confidential_shuffling.txtpb`](private_compute_services_confidential_shuffling.txtpb)
+to validate access policy endorsements for confidential shuffling computations.
+
+Private Compute Services data may be processed with confidential shuffling computations for
+limited use cases where processing with differential privacy is not feasible.
+Example use cases include performing analytics to detect and identify harmful
+applications.
+
+Processing of Private Compute Services data with confidential shuffling computations will use a
+combination of shuffling and thresholding to: 1) break links between individual
+logs, 2) only release logs for a metric if they contain contributions from at
+least a minimum number of unique devices, and 3) optionally, ensure k-anonymity
+on a subset of logged fields. The endorsed access policy specifies the
+thresholds and configuration that apply to each use case. Differential privacy
+is not applied to the results of these workloads.
+
+We expect the use of confidential shuffling computations to evolve over time,
+and any changes to these details will be reflected here.
+
 ## Recorder
 
 [Recorder](https://play.google.com/store/apps/details?id=com.google.android.apps.recorder)
