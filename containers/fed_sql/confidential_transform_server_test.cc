@@ -1702,6 +1702,95 @@ TEST_F(FedSqlServerTest, StreamInitializeGemma4E4BConfiguration) {
       IsOk());
 }
 
+TEST_F(FedSqlServerTest, StreamInitializeLlamaCppGemma4E4BConfiguration) {
+  constexpr absl::string_view kLlamaWeightConfigId = "llama_gemma4_weight_id";
+  FedSqlContainerInitializeConfiguration init_config =
+      DefaultFedSqlContainerConfig();
+  *init_config.mutable_inference_init_config() = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {transcript}" }
+      }
+      gemma_config {
+        model_weight_file: "/path/to/gemma4_e4b.gguf"
+        model: GEMMA4_E4B
+        model_training: GEMMA_IT
+        weight_type: WEIGHT_TYPE_GGUF
+      }
+    }
+    llama_cpp_init_config {}
+  )pb");
+  init_config.mutable_inference_init_config()
+      ->mutable_llama_cpp_init_config()
+      ->set_model_weight_configuration_id(std::string(kLlamaWeightConfigId));
+  InitializeRequest initialize_request =
+      CreateInitializeRequest(std::move(init_config));
+  InitializeResponse response;
+  grpc::ClientContext context;
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+
+  StreamInitializeRequest model_weight_write_config;
+  ConfigurationMetadata* model_weight_metadata =
+      model_weight_write_config.mutable_write_configuration()
+          ->mutable_first_request_metadata();
+  model_weight_metadata->set_configuration_id(
+      std::string(kLlamaWeightConfigId));
+  model_weight_metadata->set_total_size_bytes(0);
+  model_weight_write_config.mutable_write_configuration()->set_commit(true);
+
+  ASSERT_TRUE(writer->Write(model_weight_write_config));
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      IsOk());
+}
+
+TEST_F(FedSqlServerTest,
+       StreamInitializeLlamaCppGemma4E4BMissingWeightConfigurationFails) {
+  constexpr absl::string_view kMissingLlamaWeightId =
+      "missing_llama_gemma4_weight_id";
+  FedSqlContainerInitializeConfiguration init_config =
+      DefaultFedSqlContainerConfig();
+  *init_config.mutable_inference_init_config() = PARSE_TEXT_PROTO(R"pb(
+    inference_config {
+      inference_task: {
+        column_config {
+          input_column_names: [ "transcript" ]
+          output_column_name: "topic"
+        }
+        prompt { prompt_template: "Hello, {transcript}" }
+      }
+      gemma_config {
+        model_weight_file: "/path/to/gemma4_e4b.gguf"
+        model: GEMMA4_E4B
+        model_training: GEMMA_IT
+        weight_type: WEIGHT_TYPE_GGUF
+      }
+    }
+    llama_cpp_init_config {}
+  )pb");
+  init_config.mutable_inference_init_config()
+      ->mutable_llama_cpp_init_config()
+      ->set_model_weight_configuration_id(std::string(kMissingLlamaWeightId));
+  InitializeRequest initialize_request =
+      CreateInitializeRequest(std::move(init_config));
+  InitializeResponse response;
+  grpc::ClientContext context;
+  std::unique_ptr<::grpc::ClientWriter<StreamInitializeRequest>> writer =
+      stub_->StreamInitialize(&context, &response);
+
+  EXPECT_TRUE(WritePipelinePrivateState(writer.get(), ""));
+  EXPECT_THAT(
+      WriteInitializeRequest(std::move(writer), std::move(initialize_request)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr(kMissingLlamaWeightId)));
+}
+
 TEST_F(FedSqlServerTest, ConfigureSessionBeforeInitialize) {
   grpc::ClientContext session_context;
   SessionRequest configure_request;

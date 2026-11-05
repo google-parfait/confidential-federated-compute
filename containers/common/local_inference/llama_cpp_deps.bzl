@@ -19,15 +19,15 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 visibility("public")
 
 def _llama_cpp_deps_impl(ctx):  # buildifier: disable=unused-variable
+    # Pin llama.cpp to release b10400 (matching containers/gcp/MODULE.bazel) so
+    # CPU containers support the gemma4 GGUF model architecture.
     # go/keep-sorted start block=yes newline_separated=yes ignore_prefixes=http_archive
     http_archive(
         name = "llama_cpp",
         build_file = "@confidential-federated-compute//containers/common/local_inference:llama_cpp.BUILD.bzl",
-        integrity = "sha256-tE6qqF3MiQbSWpTfUDYqTK4KndvvJ0R27udIde7/LE4=",
-        patch_args = ["-p1"],
-        patches = ["@confidential-federated-compute//containers/common/local_inference:add_build_info.patch"],
-        strip_prefix = "llama.cpp-be48528b068111304e4a0bb82c028558b5705f05",
-        url = "https://github.com/ggml-org/llama.cpp/archive/be48528b068111304e4a0bb82c028558b5705f05.tar.gz",
+        integrity = "sha256-E7X02EvzfwA9Qv6PxvWSvkX0t51U1iDDSRwgUL6xeQw=",
+        strip_prefix = "llama.cpp-1f368f354d9edcfea9fd6a1e0989b3e7335a050f",
+        url = "https://github.com/ggml-org/llama.cpp/archive/1f368f354d9edcfea9fd6a1e0989b3e7335a050f.tar.gz",
     )
     # go/keep-sorted end
 

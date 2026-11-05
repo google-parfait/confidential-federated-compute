@@ -102,6 +102,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "test_gguf",
+    testonly = True,
+    hdrs = ["@confidential-federated-compute//containers/common/local_inference/testing:test_gguf.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@confidential-federated-compute//containers/common/local_inference:include_path",
+        "@llama_cpp//:ggml-base",
+    ],
+)
+
 cc_test(
     name = "local_batched_inference_engine_test",
     srcs = ["local_batched_inference_engine_test.cc"],
@@ -109,6 +120,7 @@ cc_test(
         ":inference_model",
         ":local_batched_inference_engine",
         ":mocks",
+        ":test_gguf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
