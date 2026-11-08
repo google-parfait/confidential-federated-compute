@@ -1,0 +1,31 @@
+diff --git BUILD BUILD
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ BUILD
+@@ -0,0 +1,3 @@
++package(
++    default_visibility = ["//visibility:public"],
++)
+diff --git optax/BUILD optax/BUILD
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ optax/BUILD
+@@ -0,0 +1,16 @@
++load("@rules_python//python:defs.bzl", "py_library")
++
++package(
++    default_visibility = ["//visibility:public"],
++)
++
++py_library(
++    name = "optax",
++    srcs = glob(["**/*.py"], exclude = ["**/*_test.py"]),
++    deps = [
++        "@pypi//absl_py",
++        "@pypi//jax",
++        "@pypi//jaxlib",
++        "@pypi//numpy",
++    ],
++)

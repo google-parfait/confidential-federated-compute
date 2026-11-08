@@ -30,7 +30,7 @@ index 0000000..d67bcf3
 +		"@pypi//jax",
 +		"@pypi//jaxlib",
 +		"@pypi//numpy",
-+		"@pypi//optax",
++		"@optax//optax",
 +		"@pypi//pydantic",
 +		"@pypi//scipy",
 +	]

@@ -121,5 +121,67 @@ def trusted_program(external_handle):
   ASSERT_TRUE(session_response.has_finalize());
 }
 
+TYPED_TEST(ProgramExecutorTeeSessionTest, ProgramWithJAXPrivacyExecutionPlan) {
+  this->CreateSession(R"(
+import math
+import federated_language
+from federated_language_jax.computation import jax_computation
+import jax.numpy as jnp
+import jax_privacy
+import numpy as np
+import tensorflow_federated as tff
+
+def trusted_program(external_handle):
+  plan = jax_privacy.execution_plan.BandMFConfig.default(
+      num_bands=2,
+      iterations=4,
+      expected_participations=1,
+      strategy_optimization_steps=1,
+  ).calibrate(epsilon=1.0, delta=1e-6).make()
+
+  # The clipped gradient sum is computed by the XLA runtime.
+  @jax_computation.jax_computation(
+      np.float32, federated_language.TensorType(np.float32, (3,))
+  )
+  def clipped_grad_sum(param, data):
+    loss_fn = lambda p, x: 0.5 * jnp.mean((x - p) ** 2)
+    return plan.clipped_grad(loss_fn)(param, data)
+
+  # Per-example gradients are [3, -4, 5], which are clipped to [1, -1, 1].
+  grad = clipped_grad_sum(3.0, np.array([0, 7, -2], dtype=np.float32))
+
+  noise_state = plan.noise_addition_transform.init(grad)
+  noisy_grad, _ = plan.noise_addition_transform.update(grad, noise_state)
+  noisy_grad = float(noisy_grad)
+  assert math.isfinite(noisy_grad)
+
+  grad = float(grad)
+  grad_val, _ = tff.framework.serialize_value(grad, federated_language.framework.infer_type(grad))
+  external_handle.release_unencrypted(grad_val.SerializeToString(), b"clipped_grad")
+  noisy_grad_val, _ = tff.framework.serialize_value(noisy_grad, federated_language.framework.infer_type(noisy_grad))
+  external_handle.release_unencrypted(noisy_grad_val.SerializeToString(), b"noisy_grad")
+  )");
+
+  ::fcp::confidentialcompute::SessionRequest session_request;
+  ::fcp::confidentialcompute::SessionResponse session_response;
+  session_request.mutable_finalize();
+
+  ASSERT_TRUE(this->stream_->Write(session_request));
+  ASSERT_TRUE(this->stream_->Read(&session_response));
+
+  auto released_data = this->fake_data_read_write_service_.GetReleasedData();
+  ASSERT_EQ(released_data.size(), 2);
+  tensorflow_federated::v0::Value clipped_grad_value;
+  clipped_grad_value.ParseFromString(released_data["clipped_grad"]);
+  ASSERT_EQ(clipped_grad_value.array().float32_list().value().size(), 1);
+  EXPECT_NEAR(clipped_grad_value.array().float32_list().value().at(0), 1.0,
+              1e-5);
+  tensorflow_federated::v0::Value noisy_grad_value;
+  noisy_grad_value.ParseFromString(released_data["noisy_grad"]);
+  ASSERT_EQ(noisy_grad_value.array().float32_list().value().size(), 1);
+
+  ASSERT_TRUE(session_response.has_finalize());
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::program_executor_tee

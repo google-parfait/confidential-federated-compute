@@ -264,6 +264,7 @@ trusted_py_runtime(
         "@federated_compute//fcp/confidentialcompute/python:min_sep_data_source",
         "@federated_language_jax//federated_language_jax",
         "@jax_privacy//jax_privacy",
+        "@optax//optax",
         # Needed by jax.export to (de)serialize exported functions, e.g. models
         # sideloaded into programs.
         "@pypi//flatbuffers",
@@ -279,6 +280,7 @@ trusted_py_runtime(
         "oak",
         "jax_privacy",
         "dp_accounting",
+        "optax",
     ],
 )
 
