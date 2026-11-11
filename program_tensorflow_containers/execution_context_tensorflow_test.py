@@ -21,6 +21,7 @@ import compilers
 import computation_runner_bindings_tensorflow
 import fake_service_bindings_tensorflow
 import federated_language
+import keras
 import numpy as np
 import portpicker
 from program_executor_tee.program_context import execution_context
@@ -501,10 +502,13 @@ class MergeableExecutionContextTest(
       dataset = dataset.map(decode_example)
       return dataset
 
-    inputs = tf.keras.Input(shape=(2,), dtype=tf.float32)
-    outputs = tf.keras.layers.Dense(1, use_bias=True)(inputs)
-    keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
-    loss = tf.keras.losses.MeanSquaredError()
+    dropout_rate = 0.2
+    dropout_seed = 42
+    inputs = keras.Input(shape=(2,), dtype=tf.float32)
+    hidden = keras.layers.Dropout(rate=dropout_rate, seed=dropout_seed)(inputs)
+    outputs = keras.layers.Dense(1, use_bias=True)(hidden)
+    keras_model = keras.Model(inputs=inputs, outputs=outputs)
+    loss = keras.losses.MeanSquaredError()
     input_spec = (
         tf.TensorSpec(shape=[2, 2], dtype=tf.float32),
         tf.TensorSpec(shape=[2, 1], dtype=tf.float32),
@@ -512,7 +516,7 @@ class MergeableExecutionContextTest(
 
     def _metrics_constructor():
       return collections.OrderedDict({
-          "loss": tf.keras.metrics.MeanSquaredError(),
+          "loss": keras.metrics.MeanSquaredError(),
           "num_examples": tff.learning.metrics.NumExamplesCounter(),
       })
 
@@ -561,6 +565,17 @@ class MergeableExecutionContextTest(
     new_state, metrics = learning_process.next(state, client_data)
     self.assertIsNotNone(new_state)
     self.assertIsNotNone(metrics)
+
+    eval_process = tff.learning.algorithms.build_fed_eval(model_fn=model)
+    eval_process = (
+        tff.simulation.compose_dataset_computation_with_learning_process(
+            _client_input_preprocessing, eval_process
+        )
+    )
+    eval_state = eval_process.initialize()
+    new_eval_state, eval_metrics = eval_process.next(eval_state, client_data)
+    self.assertIsNotNone(new_eval_state)
+    self.assertIsNotNone(eval_metrics)
 
 
 if __name__ == "__main__":

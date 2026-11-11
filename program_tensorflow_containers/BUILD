@@ -98,6 +98,7 @@ py_test(
         "@federated_language//federated_language",
         "@org_tensorflow_federated//tensorflow_federated",
         "@pypi//absl_py",
+        "@pypi//keras",
         "@pypi//numpy",
         "@pypi//portpicker",
     ],
