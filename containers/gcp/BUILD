@@ -458,10 +458,10 @@ image_digest_flag(
     build_setting_default = "",
 )
 
-# Default to 540. Can be overridden on command line or in rules if needed.
+# Default to 720. Can be overridden on command line or in rules if needed.
 int_flag(
     name = "max_sw_tcb_age_days",
-    build_setting_default = 540,
+    build_setting_default = 720,
 )
 
 # Default to 540. Can be overridden on command line or in rules if needed.

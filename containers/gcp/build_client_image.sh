@@ -18,7 +18,7 @@ ALTS=true
 MODEL=""
 MIN_SW_TCB_DATE=""
 MIN_HW_TCB_DATE=""
-MAX_SW_TCB_AGE_DAYS=540
+MAX_SW_TCB_AGE_DAYS=720
 MAX_HW_TCB_AGE_DAYS=540
 MIN_SWVERSION="260500"
 EXTRA_BAZEL_ARGS=""
@@ -46,7 +46,7 @@ for arg in "$@"; do
       echo "  --no-alts        Disable ALTS transport"
       echo "  --min_sw_tcb_date Minimum software TCB date (RFC3339 timestamp)"
       echo "  --min_hw_tcb_date Minimum hardware TCB date (RFC3339 timestamp)"
-      echo "  --max_sw_tcb_age_days Maximum software TCB age in days (default: 540)"
+      echo "  --max_sw_tcb_age_days Maximum software TCB age in days (default: 720)"
       echo "  --max_hw_tcb_age_days Maximum hardware TCB age in days (default: 540)"
       echo "  --min_swversion  Minimum Confidential Space image version"
       echo "  --server_digest  Manual override: bypass registry, use this single digest"

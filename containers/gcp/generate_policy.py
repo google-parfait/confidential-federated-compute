@@ -17,7 +17,7 @@ Usage:
         --verifier_type=ITA \
         --model=gemma4_e4b \
         --attestation=ita_alts \
-        --max_sw_tcb_age_days=540 \
+        --max_sw_tcb_age_days=720 \
         --max_hw_tcb_age_days=540
 
 This script is invoked as part of the bazel build in the directory, and its

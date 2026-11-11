@@ -40,7 +40,7 @@ message AttestationPolicy {
   // --- TCB Freshness ---
 
   // Maximum allowed age of the Software TCB in days relative to the token's issued-at time.
-  // This field is mandatory and must be greater than 0. The default build configuration sets this to 540.
+  // This field is mandatory and must be greater than 0. The default build configuration sets this to 720.
   uint32 max_sw_tcb_age_days = 13;
 
   // Maximum allowed age of the Hardware TCB in days relative to the token's issued-at time.
