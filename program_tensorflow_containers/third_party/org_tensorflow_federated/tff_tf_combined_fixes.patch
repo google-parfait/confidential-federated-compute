@@ -2,7 +2,7 @@ diff --git tensorflow_federated/BUILD tensorflow_federated/BUILD
 index 0704e19..7fe6a70 100644
 --- tensorflow_federated/BUILD
 +++ tensorflow_federated/BUILD
-@@ -23,6 +23,19 @@ py_library(
+@@ -23,6 +23,20 @@ py_library(
          "//tensorflow_federated/python/learning",
          "//tensorflow_federated/python/program",
          "//tensorflow_federated/python/simulation",
@@ -11,6 +11,7 @@ index 0704e19..7fe6a70 100644
 +        "@pypi//attrs",
 +        "@pypi//cachetools",
 +        "@pypi//dm_tree",
++        "@pypi//keras",
 +        "@pypi//ml_dtypes",
 +        "@pypi//numpy",
 +        "@pypi//portpicker",

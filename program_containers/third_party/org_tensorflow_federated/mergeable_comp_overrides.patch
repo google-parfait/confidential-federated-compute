@@ -101,4 +101,4 @@ index 1a84360..ee70cdd 100644
 +                pool_runner=self._pool_runner,
              )
          ),
-         comp.after_merge.type_signature.result,  # pytype: disable=attribute-error
+         comp.after_merge.type_signature.result,
