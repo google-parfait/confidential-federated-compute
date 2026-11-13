@@ -16,42 +16,51 @@
 
 #include <fstream>
 #include <iostream>
+#include <optional>
 
 namespace confidential_federated_compute::gcp {
 
 absl::Status ExchangeHandshakeMessages(
     ClientSession* session,
     grpc::ClientReaderWriter<SessionRequest, SessionResponse>* stream) {
+  // Strict request/response exchange: exactly one GetOutgoingMessage per
+  // round. Do not use PumpOutgoingMessages here: re-polling during the
+  // attestation step makes Oak append the self-assertions to the attestation
+  // binding token a second time, which breaks session binding verification.
   int round = 0;
-  while (true) {
+  while (!session->IsOpen()) {
     round++;
     std::cerr << "----------> ExchangeHandshake round " << round
-              << ": calling PumpOutgoingMessages" << std::endl;
+              << ": calling GetOutgoingMessage" << std::endl;
 
-    // 1. Send any pending outgoing handshake messages.
-    absl::StatusOr<bool> sent_or = PumpOutgoingMessages(session, stream);
-    if (!sent_or.ok()) {
+    // 1. Get exactly one outgoing handshake message.
+    absl::StatusOr<std::optional<SessionRequest>> request_or =
+        session->GetOutgoingMessage();
+    if (!request_or.ok()) {
       std::cerr << "----------> ExchangeHandshake round " << round
-                << ": PumpOutgoingMessages FAILED: "
-                << sent_or.status().ToString() << std::endl;
+                << ": GetOutgoingMessage FAILED: "
+                << request_or.status().ToString() << std::endl;
       return absl::InternalError(absl::StrCat("Error during handshake: ",
-                                              sent_or.status().ToString()));
+                                              request_or.status().ToString()));
+    }
+    if (!request_or->has_value()) {
+      std::cerr << "----------> ExchangeHandshake round " << round
+                << ": no outgoing message but session is not open" << std::endl;
+      return absl::InternalError(
+          "Handshake stalled: session produced no outgoing message but is "
+          "not open.");
+    }
+
+    if (!stream->Write(**request_or)) {
+      std::cerr << "----------> ExchangeHandshake round " << round
+                << ": stream->Write failed" << std::endl;
+      return absl::UnavailableError(
+          "Failed to write handshake message to gRPC stream.");
     }
 
     std::cerr << "----------> ExchangeHandshake round " << round
-              << ": PumpOutgoingMessages returned sent=" << *sent_or
+              << ": sent 1 message, waiting for server response (stream->Read)"
               << std::endl;
-
-    if (!*sent_or) {
-      std::cerr << "----------> ExchangeHandshake: handshake quiesced after "
-                << round << " rounds, proceeding to application data."
-                << std::endl;
-      LOG(INFO) << "Handshake quiesced, proceeding to application data.";
-      return absl::OkStatus();
-    }
-
-    std::cerr << "----------> ExchangeHandshake round " << round
-              << ": waiting for server response (stream->Read)" << std::endl;
 
     // Diagnostic: snapshot memory before Read in case of OOM kill.
     {
@@ -95,6 +104,11 @@ absl::Status ExchangeHandshakeMessages(
           put_status.ToString()));
     }
   }
+
+  std::cerr << "----------> ExchangeHandshake: session open after " << round
+            << " rounds, proceeding to application data." << std::endl;
+  LOG(INFO) << "Handshake complete, proceeding to application data.";
+  return absl::OkStatus();
 }
 
 }  // namespace confidential_federated_compute::gcp
