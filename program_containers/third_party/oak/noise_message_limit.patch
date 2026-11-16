@@ -1,0 +1,24 @@
+# Raise the Noise message size limit from 256 MiB to just under 2 GiB (the
+# protobuf serialization limit). Proposed upstream in Oak; drop this patch once
+# program_containers and program_tensorflow_containers use an Oak version that
+# includes it.
+--- oak_crypto/src/noise_handshake/mod.rs
++++ oak_crypto/src/noise_handshake/mod.rs
+@@ -111,10 +111,13 @@
+     static_assertions::const_assert!((PADDING_GRANULARITY & (PADDING_GRANULARITY - 1)) == 0);
+ 
+     let mut padded_size: usize = plaintext.len();
+-    // AES GCM is limited to encrypting 64GiB of data in a single AEAD invocation.
+-    // 256MiB is just a sane upper limit on message size, which greatly exceeds
+-    // the noise specified 64KiB, which will be too restrictive for our use cases.
+-    if padded_size > (1usize << 28) {
++    // AES GCM can encrypt up to 64GiB of data in a single AEAD invocation, so
++    // it isn't the constraint here. Plaintexts are usually serialized
++    // protobufs, which can be up to 2GiB, so allow nearly that much. The
++    // ciphertext is slightly larger than the plaintext (padding and the AEAD
++    // tag) and is usually sent inside a protobuf too, so leave 1KiB for that
++    // overhead.
++    if padded_size > (1usize << 31) - (1usize << 10) {
+         return Err(Error::DataTooLarge(padded_size));
+     }
+     padded_size += 1; // padding-length byte

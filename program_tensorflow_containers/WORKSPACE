@@ -207,6 +207,7 @@ http_archive(
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:session_binder.patch",
+        "@confidential_federated_compute_program//third_party/oak:noise_message_limit.patch",
     ],
     strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
     url = "https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz",
