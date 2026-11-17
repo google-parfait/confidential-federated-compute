@@ -79,6 +79,7 @@ archive_override(
         "//third_party/oak:oak_restricted_kernel_sdk_lib.patch",
         "//third_party/oak:session_binder.patch",
         "//third_party/oak:session_binding_token_compat.patch",
+        "//third_party/oak:session_binding_token_sign_new.patch",
         "//third_party/oak:tr_c2sp.patch",
     ],
     strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
