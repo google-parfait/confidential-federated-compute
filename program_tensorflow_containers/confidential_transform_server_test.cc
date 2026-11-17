@@ -422,7 +422,7 @@ def trusted_program(external_handle):
   privatizer = noise_addition.matrix_factorization_privatizer(
       matrix_mechanism,
       stddev=_NOISE_MULTIPLIER * _CLIP_NORM,
-      prng_key=jax.random.PRNGKey(global_noise_seed),
+      rng=global_noise_seed,
       dtype=jnp.float32,
   )
   dp_mf_factory = dp_mf_aggregator.DPMFAggregatorFactory(
