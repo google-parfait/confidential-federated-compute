@@ -4,7 +4,7 @@
 # includes it.
 --- oak_crypto/src/noise_handshake/mod.rs
 +++ oak_crypto/src/noise_handshake/mod.rs
-@@ -111,10 +111,13 @@
+@@ -128,10 +128,13 @@
      static_assertions::const_assert!((PADDING_GRANULARITY & (PADDING_GRANULARITY - 1)) == 0);
  
      let mut padded_size: usize = plaintext.len();

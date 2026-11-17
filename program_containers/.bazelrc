@@ -12,9 +12,9 @@ build --define xnn_enable_x86_amxfp16=false
 common --noenable_bzlmod
 common --repo_env=HERMETIC_PYTHON_VERSION=3.12
 
-# rules_rust 0.54.1 doesn't work with rust's experimental lld linking and clang
-# (https://blog.rust-lang.org/2024/05/17/enabling-rust-lld-on-linux.html).
-build --@rules_rust//rust/settings:extra_rustc_flag=-Zlinker-features=-lld --@rules_rust//rust/settings:extra_exec_rustc_flag=-Zlinker-features=-lld
+# This is needed to make linking a `rust_library` into a `cc_library` (and therefore having it
+# linked by the C++ linker) work correctly.
+build --@rules_rust//rust/settings:experimental_use_allocator_libraries_with_mangled_symbols
 
 # Settings for remote build execution platform targets. We use the CFC-defined :remote_platform
 # target rather than defining a  target in this workspace, so we override the default values from

@@ -29,7 +29,7 @@ pub static RUNTIME: Lazy<Runtime> =
     Lazy::new(|| Builder::new_multi_thread().enable_all().build().unwrap());
 
 /// Initializes the Tokio runtime context.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn init_tokio_runtime() {
     Lazy::force(&RUNTIME);
     println!("Rust runtime is running");
@@ -39,7 +39,7 @@ pub extern "C" fn init_tokio_runtime() {
 ///
 /// The caller is responsible for calling `exit_tokio_runtime` with this
 /// handle to exit the context. Failure to do so will lead to resource leaks.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn enter_tokio_runtime() -> *mut c_void {
     println!("Rust: enter_tokio_runtime called");
     // Create an EnterGuard and keep it alive on the heap.
@@ -49,7 +49,7 @@ pub extern "C" fn enter_tokio_runtime() -> *mut c_void {
 }
 
 /// Exits the Tokio runtime context using the handle from `enter_tokio_runtime`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn exit_tokio_runtime(guard_ptr: *mut c_void) {
     println!("Rust: exit_tokio_runtime called");
     if guard_ptr.is_null() {
@@ -116,7 +116,7 @@ fn create_session_config_internal() -> Result<*mut SessionConfig> {
 /// `endorsed_evidence_bytes` and `endorsed_evidence_len` must describe a valid
 /// buffer. Data must not be modified during this function call. It may be
 /// modified or discarded after, as this function will make its own copy.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn create_session_config() -> *mut SessionConfig {
     match create_session_config_internal() {
         Ok(config) => {
