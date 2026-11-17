@@ -39,9 +39,9 @@ http_archive(
 
 http_archive(
     name = "boringssl",
-    integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
-    strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
-    url = "https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz",
+    integrity = "sha256-UuLZZ1nUg+OE45ZKJRN4HqBctrLWd/H49aQEmuowU10=",
+    strip_prefix = "boringssl-0.20260211.0",
+    url = "https://github.com/google/boringssl/archive/refs/tags/0.20260211.0.tar.gz",
 )
 
 http_archive(
@@ -110,15 +110,15 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-v0FFMxIF5So4vBCinqbf60A19ttXDWT+3gYrqBzipO4=",
+    integrity = "sha256-UTVyhXLd6HTzx/NFUJH5l9z1G7fOZJ+/pqUoS/TCBVE=",
     patches = [
         "@confidential_federated_compute//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",
     },
-    strip_prefix = "federated-compute-aad3eb5a4b6d075978ec3e126a036be6022f6012",
-    url = "https://github.com/google-parfait/federated-compute/archive/aad3eb5a4b6d075978ec3e126a036be6022f6012.tar.gz",
+    strip_prefix = "federated-compute-b79b9c54fa02271268fa4acb39b08e20e39f862d",
+    url = "https://github.com/google-parfait/federated-compute/archive/b79b9c54fa02271268fa4acb39b08e20e39f862d.tar.gz",
 )
 
 http_archive(

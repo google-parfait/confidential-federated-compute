@@ -43,9 +43,9 @@ http_archive(
 
 http_archive(
     name = "boringssl",
-    integrity = "sha256-YfmrrozMej0Kon25c2SrYYc4NEHI0R3+MVBlzWEsXo8=",
-    strip_prefix = "boringssl-34492c89a8e381e0e856a686cc71b1eb5bd728db",
-    url = "https://github.com/google/boringssl/archive/34492c89a8e381e0e856a686cc71b1eb5bd728db.tar.gz",
+    integrity = "sha256-UuLZZ1nUg+OE45ZKJRN4HqBctrLWd/H49aQEmuowU10=",
+    strip_prefix = "boringssl-0.20260211.0",
+    url = "https://github.com/google/boringssl/archive/refs/tags/0.20260211.0.tar.gz",
 )
 
 # Pin the same version of gRPC as TF 2.21 but add a patch to fix build errors.
@@ -131,7 +131,7 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-v0FFMxIF5So4vBCinqbf60A19ttXDWT+3gYrqBzipO4=",
+    integrity = "sha256-UTVyhXLd6HTzx/NFUJH5l9z1G7fOZJ+/pqUoS/TCBVE=",
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
@@ -142,8 +142,8 @@ http_archive(
         "@confidential_federated_compute//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-aad3eb5a4b6d075978ec3e126a036be6022f6012",
-    url = "https://github.com/google-parfait/federated-compute/archive/aad3eb5a4b6d075978ec3e126a036be6022f6012.tar.gz",
+    strip_prefix = "federated-compute-b79b9c54fa02271268fa4acb39b08e20e39f862d",
+    url = "https://github.com/google-parfait/federated-compute/archive/b79b9c54fa02271268fa4acb39b08e20e39f862d.tar.gz",
 )
 
 http_archive(
@@ -171,7 +171,7 @@ http_archive(
 
 http_archive(
     name = "jax_privacy",
-    integrity = "sha256-iGuwn6fTss2LwtfCaePMewwSpmVbRp9r+k69UVvrx0U=",
+    integrity = "sha256-3UgCX0eVoG9nU8JTzwOK6tGen1J63mqDI1NeEHXyy9E=",
     patch_cmds = [
         "sed -i 's|@pypi//dp_accounting|@dp_accounting//dp_accounting|g' jax_privacy/BUILD",
         "sed -i 's|@pypi//optax|@optax//optax|g' jax_privacy/BUILD",
@@ -179,8 +179,8 @@ http_archive(
     patches = [
         "@confidential_federated_compute_program//third_party/jax_privacy:package.patch",
     ],
-    strip_prefix = "jax_privacy-e8b86cfbac1bfa04df0b6a7f539ff248efa2565a",
-    url = "https://github.com/google-deepmind/jax_privacy/archive/e8b86cfbac1bfa04df0b6a7f539ff248efa2565a.tar.gz",
+    strip_prefix = "jax_privacy-e1fcaeff544a143d682339740f3baf87381c7ad2",
+    url = "https://github.com/google-deepmind/jax_privacy/archive/e1fcaeff544a143d682339740f3baf87381c7ad2.tar.gz",
 )
 
 git_repository(
