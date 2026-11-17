@@ -226,6 +226,29 @@ TEST_F(DataParserTest, ResolveBlobIdToTensor_IncorrectTensorName) {
                 "No aggregation tensor found for name different_tensor_name"));
 }
 
+TEST_F(DataParserTest,
+       ResolveBlobIdToTensor_FailsWhenAuthenticatedBlobIdDoesNotMatch) {
+  InitDataParser();
+  std::string tensor_name = "tensor_name";
+  CHECK_OK(fake_data_read_write_service_->StoreEncryptedMessageForKms(
+      "blob_id_1", BuildClientCheckpointFromInts({4, 5, 6}, tensor_name)));
+  // The untrusted server serves blob_id_1's (validly encrypted) blob in
+  // response to a request for blob_id_2.
+  CHECK_OK(
+      fake_data_read_write_service_->AliasMessage("blob_id_1", "blob_id_2"));
+
+  // The genuine blob id still resolves.
+  EXPECT_TRUE(
+      data_parser_->ResolveBlobIdToTensor("blob_id_1", tensor_name).ok());
+
+  // The aliased blob id is rejected even though the blob decrypts.
+  auto tensor_proto =
+      data_parser_->ResolveBlobIdToTensor("blob_id_2", tensor_name);
+  EXPECT_EQ(tensor_proto.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(tensor_proto.status().message(),
+              HasSubstr("authenticated blob_id does not match"));
+}
+
 TEST_F(DataParserTest, ReleaseUnencrypted) {
   InitDataParser();
 

@@ -405,5 +405,41 @@ TEST_F(FakeDataReadWriteServiceTest, RemoveMessageFailureForUnknownId) {
   EXPECT_EQ(result, absl::NotFoundError("No message stored for id."));
 }
 
+TEST_F(FakeDataReadWriteServiceTest, AliasMessageSuccess) {
+  std::string message = "message";
+  CHECK_OK(
+      fake_data_read_write_service_->StorePlaintextMessage("blob_id", message));
+  ASSERT_TRUE(
+      fake_data_read_write_service_->AliasMessage("blob_id", "alias_id").ok());
+
+  // A ReadRequest for the alias returns the message stored for blob_id.
+  ReadRequest read_request;
+  read_request.set_blob_id("alias_id");
+  ClientContext client_context;
+  std::unique_ptr<ClientReader<ReadResponse>> reader(
+      stub_->Read(&client_context, read_request));
+  ReadResponse read_response;
+  ASSERT_TRUE(reader->Read(&read_response));
+  EXPECT_EQ(read_response.data(), message);
+  ASSERT_TRUE(reader->Finish().ok());
+}
+
+TEST_F(FakeDataReadWriteServiceTest, AliasMessageFailureForUnknownId) {
+  auto result =
+      fake_data_read_write_service_->AliasMessage("nonexistent_id", "alias_id");
+  EXPECT_EQ(result, absl::NotFoundError("No message stored for id."));
+}
+
+TEST_F(FakeDataReadWriteServiceTest, AliasMessageFailureForExistingAlias) {
+  CHECK_OK(fake_data_read_write_service_->StorePlaintextMessage("blob_id_1",
+                                                                "message_1"));
+  CHECK_OK(fake_data_read_write_service_->StorePlaintextMessage("blob_id_2",
+                                                                "message_2"));
+  auto result =
+      fake_data_read_write_service_->AliasMessage("blob_id_1", "blob_id_2");
+  EXPECT_EQ(result,
+            absl::InvalidArgumentError("Message already stored for alias id."));
+}
+
 }  // namespace
 }  // namespace confidential_federated_compute::program_executor_tee

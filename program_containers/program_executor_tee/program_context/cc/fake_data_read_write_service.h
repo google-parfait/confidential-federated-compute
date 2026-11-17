@@ -68,6 +68,12 @@ class FakeDataReadWriteService
   // Removes the entry with the given id from the internal map of ReadResponses.
   absl::Status RemoveMessage(absl::string_view id);
 
+  // Makes a ReadRequest for `alias_id` return the same ReadResponse that is
+  // already stored for `existing_id`. This simulates an untrusted server that
+  // serves one blob in response to requests for a different blob id.
+  absl::Status AliasMessage(absl::string_view existing_id,
+                            absl::string_view alias_id);
+
   std::pair<std::string, std::string> GetInputPublicPrivateKeyPair() {
     return input_public_private_key_pair_;
   }

@@ -261,4 +261,19 @@ absl::Status FakeDataReadWriteService::RemoveMessage(absl::string_view id) {
   return absl::OkStatus();
 }
 
+absl::Status FakeDataReadWriteService::AliasMessage(
+    absl::string_view existing_id, absl::string_view alias_id) {
+  auto it = id_to_read_response_.find(std::string(existing_id));
+  if (it == id_to_read_response_.end()) {
+    return absl::NotFoundError("No message stored for id.");
+  }
+  if (id_to_read_response_.find(std::string(alias_id)) !=
+      id_to_read_response_.end()) {
+    return absl::InvalidArgumentError("Message already stored for alias id.");
+  }
+  ReadResponse response = it->second;
+  id_to_read_response_[std::string(alias_id)] = std::move(response);
+  return absl::OkStatus();
+}
+
 }  // namespace confidential_federated_compute::program_executor_tee

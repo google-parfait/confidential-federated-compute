@@ -124,6 +124,7 @@ cc_library(
         "@federated_compute//fcp/base:digest",
         "@federated_compute//fcp/base:random_token",
         "@federated_compute//fcp/base:status_converters",
+        "@federated_compute//fcp/protos/confidentialcompute:blob_header_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:confidential_transform_cc_proto",
         "@federated_compute//fcp/protos/confidentialcompute:data_read_write_cc_grpc",
         "@federated_compute//fcp/protos/confidentialcompute:data_read_write_cc_proto",

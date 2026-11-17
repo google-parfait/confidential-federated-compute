@@ -27,6 +27,7 @@
 #include "containers/crypto.h"
 #include "fcp/base/digest.h"
 #include "fcp/base/status_converters.h"
+#include "fcp/protos/confidentialcompute/blob_header.pb.h"
 #include "fcp/protos/confidentialcompute/confidential_transform.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "grpcpp/channel.h"
@@ -84,13 +85,32 @@ absl::StatusOr<std::unique_ptr<CheckpointParser>> GetCheckpointParser(
   if (combined_read_response.first_response_metadata().has_unencrypted()) {
     checkpoint_cord = combined_data;
   } else {
-    ABSL_ASSIGN_OR_RETURN(std::string fc_checkpoint,
-                          blob_decryptor->DecryptBlob(
-                              combined_read_response.first_response_metadata(),
-                              combined_data.Flatten(),
-                              combined_read_response.first_response_metadata()
-                                  .hpke_plus_aead_data()
-                                  .key_id()));
+    const BlobMetadata& metadata =
+        combined_read_response.first_response_metadata();
+    ABSL_ASSIGN_OR_RETURN(
+        std::string fc_checkpoint,
+        blob_decryptor->DecryptBlob(metadata, combined_data.Flatten(),
+                                    metadata.hpke_plus_aead_data().key_id()));
+
+    // Successful decryption authenticates the BlobHeader carried in the
+    // associated metadata. Verify that it names the blob that was requested,
+    // so that the untrusted side cannot serve one blob in response to requests
+    // for other blob ids (e.g. to make a single upload count multiple times).
+    // The (unauthenticated) Any type_url is ignored; only the authenticated
+    // value bytes are parsed.
+    BlobHeader blob_header;
+    if (!blob_header.ParseFromString(metadata.hpke_plus_aead_data()
+                                         .kms_symmetric_key_associated_data()
+                                         .associated_metadata()
+                                         .value())) {
+      return absl::InvalidArgumentError(
+          "Failed to parse the authenticated BlobHeader of the requested "
+          "blob.");
+    }
+    if (blob_header.blob_id() != blob_id) {
+      return absl::InvalidArgumentError(
+          "The authenticated blob_id does not match the requested blob_id.");
+    }
 
     checkpoint_cord = absl::Cord(std::move(fc_checkpoint));
   }
