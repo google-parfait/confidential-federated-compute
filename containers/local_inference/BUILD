@@ -52,6 +52,7 @@ cc_library(
     srcs = ["@confidential-federated-compute//containers/common/local_inference:inference_model.cc"],
     hdrs = ["@confidential-federated-compute//containers/common/local_inference:inference_model.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -66,6 +67,7 @@ cc_library(
         "@federated_compute//fcp/protos/confidentialcompute:private_inference_cc_proto",
         "@gemma//:gemma_args",
         "@gemma//:gemma_lib",
+        "@gemma//:kv_cache",
         "@gemma//:matmul",
         "@gemma//:threading_context",
         "@llama_cpp",

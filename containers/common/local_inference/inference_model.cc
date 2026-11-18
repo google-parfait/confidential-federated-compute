@@ -15,10 +15,13 @@
 #include "containers/common/local_inference/inference_model.h"
 
 #include <algorithm>
+#include <exception>
+#include <memory>
 #include <random>
 #include <regex>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -26,10 +29,12 @@
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "common/common.h"  // From @llama_cpp.
 #include "fcp/base/status_converters.h"
 #include "gemma/gemma_args.h"
+#include "gemma/kv_cache.h"
 #include "include/llama-cpp.h"
 #include "include/llama.h"
 
@@ -52,10 +57,23 @@ using ::gcpp::WrapAndTokenize;
 // RuntimeConfig.max_generated_tokens field in the inference_configuration_.
 constexpr size_t kMaxOutputTokens = 1024;
 constexpr size_t kNumTokensPerBatch = 2048;
-// Default maximum number of rows to process in a single GenerateBatch call.
-constexpr size_t kDefaultMaxBatchSize = 1;
 
 }  // namespace
+
+size_t ReusablePrefixLength(absl::Span<const int> cached_tokens,
+                            absl::Span<const int> prompt_tokens) {
+  if (prompt_tokens.empty()) {
+    return 0;
+  }
+  const size_t max_reusable =
+      std::min(cached_tokens.size(), prompt_tokens.size() - 1);
+  size_t reusable = 0;
+  while (reusable < max_reusable &&
+         cached_tokens[reusable] == prompt_tokens[reusable]) {
+    ++reusable;
+  }
+  return reusable;
+}
 
 InferenceModel::InferenceModel(
     SessionInferenceConfiguration inference_configuration,
@@ -155,127 +173,128 @@ absl::StatusOr<InferenceModel> InferenceModel::BuildModel(
 
 std::vector<absl::StatusOr<std::string>> InferenceModel::GenerateBatchGemmaCpp(
     absl::Span<const std::string> prompts) {
-  std::vector<absl::StatusOr<std::string>> results;
-  results.reserve(prompts.size());
-
   GemmaCppModel& gemma_model =
       *std::get<std::shared_ptr<GemmaCppModel>>(model_);
-  Gemma* gemma = gemma_model.gemma.get();
 
-  RuntimeConfig inference_runtime_config =
+  const RuntimeConfig& inference_runtime_config =
       inference_configuration_.initialize_configuration.inference_config()
           .runtime_config();
   int32_t config_max_output_tokens =
-      inference_configuration_.initialize_configuration.inference_config()
-          .runtime_config()
-          .max_generated_tokens();
+      inference_runtime_config.max_generated_tokens();
   size_t max_output_tokens = config_max_output_tokens > 0
                                  ? static_cast<size_t>(config_max_output_tokens)
                                  : kMaxOutputTokens;
   float temperature = 1.0 + inference_runtime_config.temperature_diff();
 
-  gcpp::MatMulEnv* env_ptr = gemma_model.env.get();
-  gcpp::Allocator* allocator_ptr = &gemma_model.ctx->allocator;
-  TimingInfo timing_info;
+  // Prompts are processed one at a time, so that each of them can reuse the
+  // KV cache entries of the prefix it shares with the previous prompt.
+  std::vector<absl::StatusOr<std::string>> results;
+  results.reserve(prompts.size());
+  for (const std::string& prompt : prompts) {
+    results.push_back(
+        GenerateGemmaCpp(gemma_model, prompt, max_output_tokens, temperature));
+  }
+  return results;
+}
 
-  size_t max_batch_size =
-      inference_runtime_config.max_batch_size() > 0
-          ? static_cast<size_t>(inference_runtime_config.max_batch_size())
-          : kDefaultMaxBatchSize;
-
-  // Process prompts in batches of max_batch_size (see GenerateBatch() in
-  // inference_model.h).
-  for (size_t batch_start = 0; batch_start < prompts.size();
-       batch_start += max_batch_size) {
-    const size_t batch_end =
-        std::min(batch_start + max_batch_size, prompts.size());
-    const size_t batch_size = batch_end - batch_start;
-
-    // Tokenize all prompts in this batch.
-    std::vector<std::vector<int>> all_tokens(batch_size);
-    std::vector<gcpp::PromptTokens> prompt_tokens(batch_size);
-    std::vector<size_t> prompt_sizes(batch_size);
-    for (size_t i = 0; i < batch_size; ++i) {
-      std::string combined_prompt = prompts[batch_start + i];
-      size_t generated = 0;
-      all_tokens[i] =
-          WrapAndTokenize(gemma->Tokenizer(), gemma->ChatTemplate(),
-                          gemma->Config().wrapping, generated, combined_prompt);
-      prompt_sizes[i] = all_tokens[i].size();
-      prompt_tokens[i] =
-          gcpp::PromptTokens(all_tokens[i].data(), all_tokens[i].size());
-    }
-
-    // Create per-query KV caches.
-    std::vector<KVCache> kv_caches;
-    kv_caches.reserve(batch_size);
-    for (size_t i = 0; i < batch_size; ++i) {
-      kv_caches.push_back(
-          KVCache(gemma->Config(), gemma->Inference(), *allocator_ptr));
-    }
-
-    hwy::Span<const gcpp::PromptTokens> prompt_span(prompt_tokens.data(),
-                                                    prompt_tokens.size());
-    hwy::Span<KVCache> kv_span(kv_caches.data(), kv_caches.size());
-    gcpp::AllQueries all_queries(prompt_span, kv_span);
-
-    // Set up per-query output streams and generated counters.
-    std::vector<std::stringstream> output_streams(batch_size);
-    std::vector<size_t> generated_counts(batch_size, 0);
-
-    auto batch_stream_token = [&gemma, &output_streams, &generated_counts,
-                               &prompt_sizes](size_t query_idx, size_t /*pos*/,
-                                              int token,
-                                              float /*prob*/) -> bool {
-      // query_idx is absolute within AllQueries.
-      size_t local_idx = query_idx;  // batch is rebuilt per chunk, so 0-based.
-      ++generated_counts[local_idx];
-      if (generated_counts[local_idx] >= prompt_sizes[local_idx] &&
-          !gemma->Config().IsEOS(token)) {
-        std::string token_text;
-        if (!gemma->Tokenizer().Decode({token}, &token_text)) {
-          LOG(WARNING) << "Failed to decode the next token.";
-          return false;
-        }
-        output_streams[local_idx] << token_text;
-      }
-      return true;
-    };
-
-    gcpp::RuntimeConfig runtime_config = {
-        .max_generated_tokens = max_output_tokens,
-        .temperature = temperature,
-        .verbosity = 0,
-        .batch_stream_token = batch_stream_token,
-    };
-    // Serialize GenerateBatch calls on this model's thread pool / MatMulEnv.
-    std::optional<std::string> chunk_error;
-    {
-      absl::MutexLock lock(&gemma_model.mutex);
-      try {
-        gemma->GenerateBatch(runtime_config, all_queries, *env_ptr,
-                             timing_info);
-      } catch (const std::exception& e) {
-        chunk_error = e.what();
-      }
-    }
-    if (chunk_error.has_value()) {
-      // All prompts in a chunk share a single GenerateBatch call, so a failure
-      // there invalidates the whole chunk. Other chunks are unaffected.
-      for (size_t i = 0; i < batch_size; ++i) {
-        results.push_back(absl::InternalError(absl::StrCat(
-            "gemma.cpp batched inference failed: ", *chunk_error)));
-      }
-      continue;
-    }
-
-    // Collect outputs from stream callbacks.
-    for (size_t i = 0; i < batch_size; ++i) {
-      results.push_back(output_streams[i].str());
-    }
+absl::StatusOr<std::string> InferenceModel::GenerateGemmaCpp(
+    GemmaCppModel& gemma_model, const std::string& prompt,
+    size_t max_output_tokens, float temperature) {
+  const Gemma& gemma = *gemma_model.gemma;
+  std::vector<int> tokens =
+      WrapAndTokenize(gemma.Tokenizer(), gemma.ChatTemplate(),
+                      gemma.Config().wrapping, /*pos=*/0, prompt);
+  if (tokens.empty()) {
+    return absl::InvalidArgumentError("Prompt produced no tokens.");
   }
 
-  return results;
+  // Serialize generation on this model's thread pool / MatMulEnv / KV cache.
+  absl::MutexLock lock(&gemma_model.mutex);
+  if (gemma_model.kv_cache == nullptr) {
+    try {
+      gemma_model.kv_cache = std::make_unique<KVCache>(
+          gemma.Config(), gemma.Inference(), gemma_model.ctx->allocator);
+    } catch (const std::exception& e) {
+      return absl::InternalError(absl::StrCat(
+          "Failed to allocate the gemma.cpp KV cache: ", e.what()));
+    }
+    gemma_model.cached_tokens.clear();
+  }
+  KVCache& kv_cache = *gemma_model.kv_cache;
+
+  // gemma.cpp only checks the size of the non-cached part of the prompt
+  // against the KV cache size, so check the full prompt here and make sure
+  // that generation doesn't run past the end of the KV cache.
+  // KVCache is implemented a ring buffer so without this check, passing a long
+  // enough prompt suffix may result in overwriting the KV entries of the
+  // prompt prefix.
+  const size_t seq_len = kv_cache.SeqLen();
+  if (tokens.size() > seq_len) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Prompt has ", tokens.size(),
+        " tokens, which exceeds the gemma.cpp seq_len of ", seq_len, "."));
+  }
+  // Make sure that KV cache has enough space to store the generated tokens,
+  // considering that the prompt tokens are already in the cache.
+  max_output_tokens = std::min(max_output_tokens, seq_len - tokens.size());
+
+  // Prefix caching: reuse the KV entries of the longest common token prefix
+  // of this prompt and the previously processed prompt. Matching tokens rather
+  // than assuming a static prompt prefix keeps this correct regardless of how
+  // the prompts were built or truncated.
+  const size_t reused = ReusablePrefixLength(gemma_model.cached_tokens, tokens);
+  const size_t num_new_prompt_tokens = tokens.size() - reused;
+  VLOG(1) << "Reusing " << reused << " of " << tokens.size()
+          << " prompt tokens from the KV cache.";
+
+  std::string output;
+  size_t num_streamed_tokens = 0;
+  auto stream_token = [&gemma, &output, &num_streamed_tokens,
+                       num_new_prompt_tokens](int token,
+                                              float /*prob*/) -> bool {
+    // gemma.cpp streams all non-cached prompt tokens (including the last one)
+    // before the generated tokens; skip them.
+    if (++num_streamed_tokens <= num_new_prompt_tokens) {
+      return true;
+    }
+    if (gemma.Config().IsEOS(token)) {
+      return true;
+    }
+    std::string token_text;
+    if (!gemma.Tokenizer().Decode({token}, &token_text)) {
+      LOG(WARNING) << "Failed to decode the next token.";
+      return false;
+    }
+    output += token_text;
+    return true;
+  };
+
+  gcpp::RuntimeConfig runtime_config = {
+      .max_generated_tokens = max_output_tokens,
+      .temperature = temperature,
+      .verbosity = 0,
+      .stream_token = stream_token,
+  };
+  TimingInfo timing_info;
+  try {
+    // KV positions < `reused` hold the shared prefix and are left untouched;
+    // positions >= `reused` are (over)written by this call. Stale entries of
+    // previous prompts beyond the current position are never attended to.
+    gemma.Generate(
+        runtime_config,
+        gcpp::PromptTokens(tokens.data() + reused, num_new_prompt_tokens),
+        /*pos=*/reused, kv_cache, *gemma_model.env, timing_info);
+  } catch (const std::exception& e) {
+    // Only the positions >= `reused` may have been modified.
+    gemma_model.cached_tokens.resize(reused);
+    return absl::InternalError(
+        absl::StrCat("gemma.cpp inference failed: ", e.what()));
+  }
+  // gemma.cpp prefills all prompt tokens but the last one, which is the first
+  // decode input, so positions [0, tokens.size() - 1) now hold this prompt.
+  tokens.pop_back();
+  gemma_model.cached_tokens = std::move(tokens);
+  return output;
 }
 
 absl::StatusOr<std::string> InferenceModel::RunLlamaCppInferencePerRow(

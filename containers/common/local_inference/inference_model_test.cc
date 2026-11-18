@@ -135,6 +135,34 @@ TEST_F(InferenceModelTest, GenerateBatchWithNoPromptsReturnsNoResults) {
   EXPECT_THAT(inference_model.InferenceModel::GenerateBatch({}), IsEmpty());
 }
 
+TEST(ReusablePrefixLengthTest, EmptyCacheReusesNothing) {
+  EXPECT_EQ(ReusablePrefixLength({}, {1, 2, 3}), 0);
+}
+
+TEST(ReusablePrefixLengthTest, EmptyPromptReusesNothing) {
+  EXPECT_EQ(ReusablePrefixLength({1, 2, 3}, {}), 0);
+}
+
+TEST(ReusablePrefixLengthTest, ReusesLongestCommonPrefix) {
+  EXPECT_EQ(ReusablePrefixLength({1, 2, 3, 4, 5}, {1, 2, 3, 9, 5, 6}), 3);
+}
+
+TEST(ReusablePrefixLengthTest, DifferentFirstTokenReusesNothing) {
+  EXPECT_EQ(ReusablePrefixLength({1, 2, 3}, {7, 2, 3}), 0);
+}
+
+TEST(ReusablePrefixLengthTest, ReusesEntireCacheWhenPromptExtendsIt) {
+  EXPECT_EQ(ReusablePrefixLength({1, 2, 3}, {1, 2, 3, 4, 5}), 3);
+}
+
+TEST(ReusablePrefixLengthTest, LeavesAtLeastOnePromptTokenToProcess) {
+  // At least one prompt token must be processed to start generation, even if
+  // the cache holds the entire prompt.
+  EXPECT_EQ(ReusablePrefixLength({1, 2, 3, 4}, {1, 2, 3}), 2);
+  EXPECT_EQ(ReusablePrefixLength({1, 2, 3}, {1, 2, 3}), 2);
+  EXPECT_EQ(ReusablePrefixLength({1}, {1}), 0);
+}
+
 TEST_F(InferenceModelTest, BuildModelGemmaMissingSessionGemmaCppConfiguration) {
   SessionInferenceConfiguration inference_configuration;
   inference_configuration.initialize_configuration = PARSE_TEXT_PROTO(R"pb(

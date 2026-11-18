@@ -126,9 +126,8 @@ LocalBatchedInferenceEngine::DoBatchedInference(
   // RuntimeConfig.max_batch_size by BatchedInferenceFn, so no templating and
   // no further chunking belong here.
   //
-  // Note that this API structure may make it harder to apply optimizations
-  // like prompt prefix caching in the future. We should revisit that at some
-  // point.
+  // Prompt prefix caching is applied transparently by InferenceModel (gemma.cpp
+  // only), which matches the tokens of each prompt against the KV cache.
   return inference_model_->GenerateBatch(prompts);
 }
 
@@ -145,6 +144,11 @@ LocalBatchedInferenceEngineProvider::GetEngineForInferenceConfig(
         "MODEL_MODE_MODEL_PER_SESSION is not supported by the local_inference "
         "container. Model weights are loaded once and shared read-only across "
         "BatchedInferenceFn instances.");
+  }
+  if (runtime_config.max_batch_size() > 1) {
+    return absl::UnimplementedError(
+        "max_batch_size > 1 is not supported by the local_inference "
+        "container.");
   }
 
   ABSL_ASSIGN_OR_RETURN(
