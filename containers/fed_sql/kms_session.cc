@@ -560,8 +560,10 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
   ABSL_ASSIGN_OR_RETURN(
       std::vector<absl::Status> ignored_errors,
       CommitRowsGroupingByInput(std::move(uncommitted_inputs_), range));
+  num_committed -= ignored_errors.size();
 
-  if (!range_tracker_.AddRange(commit_config.range().start(),
+  if (num_committed > 0 &&
+      !range_tracker_.AddRange(commit_config.range().start(),
                                commit_config.range().end())) {
     return absl::FailedPreconditionError(
         "Failed to commit due to conflicting ranges");
@@ -569,7 +571,6 @@ absl::StatusOr<CommitResponse> KmsFedSqlSession::Commit(
 
   uncommitted_inputs_.clear();
   uncommitted_unique_ids_.clear();
-  num_committed -= ignored_errors.size();
   return ToCommitResponse(absl::OkStatus(), num_committed, ignored_errors);
 }
 
@@ -803,9 +804,7 @@ absl::StatusOr<absl::Cord> KmsFedSqlSession::BuildReport() {
   }
   // Fail if there were no valid inputs, as this likely indicates some
   // issue with configuration of the overall workload.
-  ABSL_ASSIGN_OR_RETURN(int num_checkpoints_aggregated,
-                        aggregator_->GetNumCheckpointsAggregated());
-  if (num_checkpoints_aggregated < 1) {
+  if (range_tracker_.GetRanges().empty()) {
     return absl::InvalidArgumentError(
         "The aggregation can't be successfully completed because no "
         "inputs were aggregated.\n"
