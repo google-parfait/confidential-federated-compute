@@ -110,15 +110,19 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-UTVyhXLd6HTzx/NFUJH5l9z1G7fOZJ+/pqUoS/TCBVE=",
+    integrity = "sha256-qt2S4b5mT1OBbB+3GOykiXKeo016jodGGeAwpUpzYEo=",
+    patch_cmds = [
+        "sed -i 's|@federated_language//federated_language_jax|@federated_language_jax//federated_language_jax|g' fcp/confidentialcompute/python/BUILD",
+        "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
+    ],
     patches = [
         "@confidential_federated_compute//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {
         "@com_google_googletest": "@googletest",
     },
-    strip_prefix = "federated-compute-b79b9c54fa02271268fa4acb39b08e20e39f862d",
-    url = "https://github.com/google-parfait/federated-compute/archive/b79b9c54fa02271268fa4acb39b08e20e39f862d.tar.gz",
+    strip_prefix = "federated-compute-58474c4693b06c9d9e6f90c11690514ef048574f",
+    url = "https://github.com/google-parfait/federated-compute/archive/58474c4693b06c9d9e6f90c11690514ef048574f.tar.gz",
 )
 
 http_archive(
