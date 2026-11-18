@@ -188,14 +188,15 @@ git_repository(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-WHDrpSMKtd1NdzCvT7odZKseG0qqnPNfWCiw0CkmHXY=",
+    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:session_binder.patch",
         "//third_party/oak:noise_message_limit.patch",
+        "//third_party/oak:tr_c2sp.patch",
     ],
-    strip_prefix = "oak-cb4ce74ed6e9e38f05def5af67207517fe4663a2",
-    url = "https://github.com/project-oak/oak/archive/cb4ce74ed6e9e38f05def5af67207517fe4663a2.tar.gz",
+    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
+    url = "https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz",
 )
 
 http_archive(
@@ -294,15 +295,15 @@ http_archive(
 
 http_archive(
     name = "rules_rust",
-    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
-    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
+    integrity = "sha256-X/2f8fby8U8gV7fLqpGl5qzZpMve1ayB2tm+s2hZYB4=",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.70.0/rules_rust-0.70.0.tar.gz",
 )
 
 http_archive(
     name = "rules_rust_bindgen",
-    integrity = "sha256-CeF7R8AVBGVjGqMZ8nQnYKQ+3tqy6cAS+R0K4u/wImg=",
+    integrity = "sha256-X/2f8fby8U8gV7fLqpGl5qzZpMve1ayB2tm+s2hZYB4=",
     strip_prefix = "extensions/bindgen",
-    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.59.2/rules_rust-0.59.2.tar.gz",
+    url = "https://github.com/bazelbuild/rules_rust/releases/download/0.70.0/rules_rust-0.70.0.tar.gz",
 )
 
 http_archive(
@@ -497,23 +498,20 @@ load("@rules_proto//proto:toolchains.bzl", "rules_proto_toolchains")
 
 rules_proto_toolchains()
 
-load("@oak//bazel:repositories.bzl", "oak_toolchain_repositories")
+load(
+    "//third_party/oak:repositories.bzl",
+    "create_oak_crate_repositories",
+    "oak_toolchain_repositories",
+    "setup_rust_dependencies",
+)
 
 oak_toolchain_repositories()
 
-load("@oak//bazel/crates:patched_crates.bzl", "load_patched_crates")
-
-load_patched_crates()
-
-load("@oak//bazel/rust:defs.bzl", "setup_rust_dependencies")
-
 setup_rust_dependencies()
-
-load("@oak//bazel/crates:repositories.bzl", "create_oak_crate_repositories")
 
 create_oak_crate_repositories()
 
-load("@oak//bazel/crates:crates.bzl", "load_oak_crate_repositories")
+load("@oak_std_crates_index//:defs.bzl", load_oak_crate_repositories = "crate_repositories")
 
 load_oak_crate_repositories()
 

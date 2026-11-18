@@ -157,13 +157,13 @@ fn create_session_config_internal(reference_values: ReferenceValues) -> Result<S
 /// `reference_values_bytes` and `reference_values_len` must describe a valid
 /// buffer. Data must not be modified during this function call. It may be
 /// modified or discarded after, as this function will make its own copy.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn create_session_config(
     reference_values_bytes: *const u8,
     reference_values_len: usize,
 ) -> *mut SessionConfig {
     let reference_values_slice =
-        std::slice::from_raw_parts(reference_values_bytes, reference_values_len);
+        unsafe { std::slice::from_raw_parts(reference_values_bytes, reference_values_len) };
     let reference_values = match ReferenceValues::decode(reference_values_slice) {
         Ok(rv) => rv,
         Err(_) => return std::ptr::null_mut(),
