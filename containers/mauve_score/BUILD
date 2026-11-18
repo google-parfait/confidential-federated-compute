@@ -111,6 +111,7 @@ cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@confidential-federated-compute//containers/common/intervals:interval",
         "@confidential-federated-compute//containers/common/time_budget:budget_cc_proto",
+        "@confidential-federated-compute//testing:matchers",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
