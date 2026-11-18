@@ -25,6 +25,7 @@
 #include "containers/common/time_budget/budget.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "testing/matchers.h"
 
 namespace confidential_federated_compute::mauve_score {
 namespace {
@@ -114,10 +115,11 @@ TEST(BudgetTest, MultipleKeysAtomicUpdate) {
   EXPECT_THAT(budget->UpdatePerKeyBudget({"key1", "key2"}),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 
-  BudgetState dst = budget->Serialize();
-  ASSERT_EQ(dst.buckets_size(), 2);
-  EXPECT_EQ(dst.buckets(1).key(), "key2");
-  EXPECT_EQ(dst.buckets(1).budget(), 2);
+  EXPECT_THAT(budget->Serialize(), EqualsProtoIgnoringRepeatedFieldOrder(R"pb(
+                buckets { key: "key1" budget: 0 }
+                buckets { key: "key2" budget: 2 }
+                time_budget {}
+              )pb"));
 }
 
 TEST(BudgetTest, TimeBudgetFirstAndSubsequentRuns) {
