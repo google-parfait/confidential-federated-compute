@@ -22,12 +22,14 @@
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "gemma/gemma.h"
+#include "gemma/kv_cache.h"
 #include "include/llama.h"
 #include "ops/matmul.h"
 #include "util/threading_context.h"
@@ -35,18 +37,38 @@
 namespace confidential_federated_compute::local_inference {
 
 // Holds Gemma model weights (read-only after init) along with its
-// ThreadingContext and MatMulEnv, whose access is serialized via mutex.
+// ThreadingContext, MatMulEnv and KV cache, whose access is serialized via
+// mutex.
 struct GemmaCppModel {
   std::unique_ptr<gcpp::Gemma> gemma;
   std::unique_ptr<gcpp::ThreadingContext> ctx;
   std::unique_ptr<gcpp::MatMulEnv> env;
-  // Serializes GenerateBatch calls. This is technically redundant/inefficient
-  // since we're mostly using a shared read-only model in practice, and with
-  // such a shared read-only model we could in fact support concurrent
-  // inferences on multiple threads. We should consider improving this
-  // implementation.
+  // Serializes GenerateBatch calls, which share `env` and the mutable KV cache
+  // state below.
   absl::Mutex mutex;
+  // KV cache reused by every prompt processed with this model, including
+  // across InferenceModel instances sharing this GemmaCppModel (prefix
+  // caching). Declared after `ctx` since it uses its allocator. Null until the
+  // first prompt is processed.
+  //
+  // TODO: Use multiple KV caches (e.g. one per inference task) so that prompts
+  // with different prefixes, such as prompts of interleaved inference tasks,
+  // don't evict each other's cached prefix. Each prompt would then be routed
+  // to the cache sharing the longest token prefix with it, possibly with a
+  // small number of runners processing prompts in parallel.
+  std::unique_ptr<gcpp::KVCache> kv_cache ABSL_GUARDED_BY(mutex);
+  // Tokens whose KV entries at positions [0, cached_tokens.size()) in
+  // `kv_cache` are valid. A prompt that starts with the same tokens reuses
+  // those entries instead of prefilling them again.
+  std::vector<int> cached_tokens ABSL_GUARDED_BY(mutex);
 };
+
+// Returns the number of leading `prompt_tokens` whose KV entries can be reused
+// from a KV cache holding the entries of `cached_tokens`: the length of their
+// longest common prefix, capped at prompt_tokens.size() - 1 since at least one
+// prompt token must be processed to start generation.
+size_t ReusablePrefixLength(absl::Span<const int> cached_tokens,
+                            absl::Span<const int> prompt_tokens);
 
 // Holds LlamaCppModel resources.
 struct LlamaCppModel {
@@ -101,6 +123,12 @@ struct SessionInferenceConfiguration {
 // InferenceModel is thread-safe when a GemmaCppModel is used (all
 // GenerateBatch calls will effectively be serialized). It is not thread-safe
 // when used with a LlamaCppModel.
+//
+// With a GemmaCppModel, prompts are processed one at a time and prefix caching
+// is used: each prompt reuses the KV entries of the longest token prefix it
+// shares with the previously processed prompt, and only that immediately
+// preceding prompt. Prefixes shared with non-immediately preceding prompts are
+// not reused.
 class InferenceModel {
  public:
   virtual ~InferenceModel() = default;
@@ -118,15 +146,8 @@ class InferenceModel {
   // prompt, in the same order. A failure that affects only part of the input
   // is reported per entry rather than failing the whole call.
   //
-  // May chunk internally by RuntimeConfig.max_batch_size (only the
-  // GemmaCppModel model code path supports it).
-  //
-  // NOTE: This inner chunking is needed for fed_sql::InferenceRunner, which
-  // passes all prompts for a blob in a single call and relies on GenerateBatch
-  // to bound how many prompts (and thus concurrent KVCache instances in
-  // gemma.cpp) are active at once. When driven by BatchedInferenceFn, the
-  // caller has already capped `prompts` at max_batch_size, so the chunk loop
-  // runs once.
+  // The GemmaCppModel code path processes the prompts one at a time,
+  // regardless of RuntimeConfig.max_batch_size.
   virtual std::vector<absl::StatusOr<std::string>> GenerateBatch(
       absl::Span<const std::string> prompts);
   const SessionInferenceConfiguration& GetInferenceConfiguration() const;
@@ -147,11 +168,16 @@ class InferenceModel {
       const SessionLlamaCppConfiguration& llama_config);
 
   // Generates text with the gemma.cpp model for each of the given prompts,
-  // processing them in chunks of RuntimeConfig.max_batch_size. Returns one
-  // result per prompt, in order. A chunk that fails yields a failed status for
-  // each of its own entries only; other chunks are unaffected.
+  // one prompt at a time. Returns one result per prompt, in order.
   std::vector<absl::StatusOr<std::string>> GenerateBatchGemmaCpp(
       absl::Span<const std::string> prompts);
+
+  // Generates text with the gemma.cpp model for a single prompt, reusing the
+  // KV entries of the longest token prefix it shares with the previously
+  // processed prompt.
+  static absl::StatusOr<std::string> GenerateGemmaCpp(
+      GemmaCppModel& gemma_model, const std::string& prompt,
+      size_t max_output_tokens, float temperature);
 
   // Generates text with the llama.cpp model for each of the given prompts, one
   // prompt at a time. Returns one result per prompt, in order.

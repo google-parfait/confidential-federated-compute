@@ -81,13 +81,7 @@ class GemmaInferenceBenchmark : public benchmark::Fixture {
     std::string tokenizer_path = absl::GetFlag(FLAGS_tokenizer_path);
     std::string model_weight_path = absl::GetFlag(FLAGS_model_path);
 
-    int batch_size = state.range(0);
-
     SessionInferenceConfiguration inference_configuration;
-    inference_configuration.initialize_configuration.mutable_inference_config()
-        ->mutable_runtime_config()
-        ->set_max_batch_size(batch_size);
-
     auto* inference_task = inference_configuration.initialize_configuration
                                .mutable_inference_config()
                                ->add_inference_task();
@@ -190,22 +184,11 @@ BENCHMARK_DEFINE_F(GemmaInferenceParserAutoPrefixBenchmark,
   RunBenchmark(state);
 }
 
-// The parameter is the batch size.
 BENCHMARK_REGISTER_F(GemmaInferenceWithoutSystemInstructionsBenchmark,
-                     BM_GemmaInference)
-    ->Arg(1)
-    ->Arg(4)
-    ->Arg(16);
-
-BENCHMARK_REGISTER_F(GemmaInferenceParserAutoBenchmark, BM_GemmaInference)
-    ->Arg(1)
-    ->Arg(4)
-    ->Arg(16);
-
-BENCHMARK_REGISTER_F(GemmaInferenceParserAutoPrefixBenchmark, BM_GemmaInference)
-    ->Arg(1)
-    ->Arg(4)
-    ->Arg(16);
+                     BM_GemmaInference);
+BENCHMARK_REGISTER_F(GemmaInferenceParserAutoBenchmark, BM_GemmaInference);
+BENCHMARK_REGISTER_F(GemmaInferenceParserAutoPrefixBenchmark,
+                     BM_GemmaInference);
 
 }  // namespace
 }  // namespace confidential_federated_compute::fed_sql

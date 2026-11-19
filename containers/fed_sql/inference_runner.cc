@@ -165,7 +165,8 @@ absl::Status InferenceRunner::RunInference(Input& input) {
       prompts.push_back(std::move(combined_prompt));
     }
 
-    // GenerateBatch chunks internally by RuntimeConfig.max_batch_size.
+    // With gemma.cpp, GenerateBatch processes the prompts one at a time,
+    // reusing the KV cache entries of the prompt prefix they share.
     std::vector<absl::StatusOr<std::string>> generated =
         model_->GenerateBatch(prompts);
 
