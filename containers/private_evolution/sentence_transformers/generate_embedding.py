@@ -45,4 +45,5 @@ def encode(input:list[str], prompt:str|None = None) -> list[list[float]]:
     A list of embeddings for the input strings. Each embedding is a list of float.
   """
   global model
+  # TODO: Support non-text inputs (e.g. audio bytes) for multimodal models.
   return model.encode(input, prompt=prompt)
