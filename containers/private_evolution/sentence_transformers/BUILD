@@ -54,7 +54,10 @@ py_library(
     name = "generate_embedding",
     srcs = ["generate_embedding.py"],
     deps = [
+        # Needed by the processors of multimodal models (e.g. EmbeddingGemma 2).
+        requirement("pillow"),
         requirement("sentence-transformers"),
+        requirement("torchvision"),
     ],
 )
 
