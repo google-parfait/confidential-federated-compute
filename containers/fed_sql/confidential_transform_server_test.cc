@@ -2372,7 +2372,9 @@ TEST_F(FedSqlServerTest, SerializeZeroInputsProducesEmptyOutput) {
 
   std::string data = Decrypt(finalize_response.read().first_response_metadata(),
                              finalize_response.read().data());
-  auto ignored_range_tracker = UnbundleRangeTracker(data);
+  auto range_tracker = UnbundleRangeTracker(data);
+  ASSERT_THAT(range_tracker, IsOk());
+  EXPECT_THAT(range_tracker->GetRanges(), SizeIs(0));
   absl::StatusOr<std::unique_ptr<CheckpointAggregator>>
       deserialized_agg_status = CheckpointAggregator::Deserialize(
           DefaultFedSqlContainerConfig().agg_configuration(), data);
@@ -2383,8 +2385,6 @@ TEST_F(FedSqlServerTest, SerializeZeroInputsProducesEmptyOutput) {
   FederatedComputeCheckpointBuilderFactory builder_factory;
   std::unique_ptr<CheckpointBuilder> checkpoint_builder =
       builder_factory.Create();
-
-  EXPECT_THAT(deserialized_agg->GetNumCheckpointsAggregated(), IsOkAndHolds(0));
 
   // Merging the empty deserialized aggregator with another aggregator should
   // have no effect on the output of the other aggregator.

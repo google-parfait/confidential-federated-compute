@@ -75,6 +75,7 @@ using ::fcp::confidentialcompute::AssociatedMetadata;
 using ::fcp::confidentialcompute::BlobHeader;
 using ::fcp::confidentialcompute::BlobMetadata;
 using ::fcp::confidentialcompute::CommitRequest;
+using ::fcp::confidentialcompute::CommitResponse;
 using ::fcp::confidentialcompute::ConfigureRequest;
 using ::fcp::confidentialcompute::FedSqlContainerCommitConfiguration;
 using ::fcp::confidentialcompute::FedSqlContainerFinalizeConfiguration;
@@ -90,6 +91,7 @@ using ::fcp::confidentialcompute::ReadResponse;
 using ::fcp::confidentialcompute::SessionRequest;
 using ::fcp::confidentialcompute::SessionTimeWindowMetadata;
 using ::fcp::confidentialcompute::SqlQuery;
+using ::fcp::confidentialcompute::WriteFinishedResponse;
 using ::fcp::confidentialcompute::WriteRequest;
 using ::google::protobuf::Descriptor;
 using ::google::protobuf::DescriptorPool;
@@ -392,12 +394,21 @@ class KmsFedSqlSessionWriteTest : public Test {
     CreateSession(decryptor);
   }
 
+  void CreateSessionWithSql(absl::string_view raw_sql) {
+    CreateSession(default_decryptor_, /*default_budget=*/5,
+                  /*consumed_tracker=*/std::nullopt,
+                  /*autotuning_data=*/absl::Cord{},
+                  /*min_agg_window_minutes=*/0,
+                  /*custom_budget_state=*/std::nullopt, raw_sql);
+  }
+
   void CreateSession(
       Decryptor& decryptor, std::optional<uint32_t> default_budget = 5,
       std::optional<RangeTracker> consumed_tracker = std::nullopt,
       absl::Cord autotuning_data = absl::Cord{},
       uint64_t min_agg_window_minutes = 0,
-      std::optional<std::string> custom_budget_state = std::nullopt) {
+      std::optional<std::string> custom_budget_state = std::nullopt,
+      absl::string_view raw_sql = "SELECT key, val * 2 AS val FROM input") {
     intrinsics_ = tensorflow_federated::aggregation::ParseFromConfig(
                       DefaultConfiguration())
                       .value();
@@ -427,7 +438,6 @@ class KmsFedSqlSessionWriteTest : public Test {
             .min_agg_window_minutes = min_agg_window_minutes});
     ConfigureRequest request;
     SqlQuery sql_query = PARSE_TEXT_PROTO(R"pb(
-      raw_sql: "SELECT key, val * 2 AS val FROM input"
       database_schema {
         table {
           name: "input"
@@ -439,6 +449,7 @@ class KmsFedSqlSessionWriteTest : public Test {
       output_columns { name: "key" type: INT64 }
       output_columns { name: "val" type: INT64 }
     )pb");
+    sql_query.set_raw_sql(std::string(raw_sql));
     request.mutable_configuration()->PackFrom(sql_query);
 
     CHECK_OK(session_->Configure(request, context_));
@@ -809,6 +820,50 @@ TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsSucceeds) {
 }
 
 TEST_F(KmsFedSqlSessionWriteTest, ReportAutotuningParamsFailsIfNoInputs) {
+  FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
+    type: FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS
+  )pb");
+  FinalizeRequest finalize_request;
+  finalize_request.mutable_configuration()->PackFrom(finalize_config);
+  BlobMetadata unused;
+  EXPECT_THAT(session_->Finalize(finalize_request, unused, context_),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("no inputs were aggregated")));
+}
+
+TEST_F(KmsFedSqlSessionWriteTest,
+       CommitWithAllInputsIgnoredDoesNotAddRangeAndReportFails) {
+  // Configure a per-client SQL query that produces NULL when `val` is 0, which
+  // passes `Write()` deserialization but fails SQLite query evaluation during
+  // `Commit()`.
+  CreateSessionWithSql(
+      "SELECT key, CASE WHEN val = 0 THEN NULL ELSE val * 2 END AS val FROM "
+      "input");
+  std::string bad_data = BuildFedSqlGroupByCheckpoint({8}, {0});
+  FedSqlContainerWriteConfiguration config = PARSE_TEXT_PROTO(R"pb(
+    type: AGGREGATION_TYPE_ACCUMULATE
+  )pb");
+  WriteRequest write_request;
+  write_request.mutable_first_request_configuration()->PackFrom(config);
+  *write_request.mutable_first_request_metadata() =
+      MakeBlobMetadata(bad_data, 1, "key_foo");
+  absl::StatusOr<WriteFinishedResponse> write_result =
+      session_->Write(write_request, bad_data, context_);
+  ASSERT_THAT(write_result, IsOk());
+  EXPECT_EQ(write_result->status().code(), Code::OK)
+      << write_result->status().message();
+
+  CommitRequest commit_request;
+  FedSqlContainerCommitConfiguration commit_config = PARSE_TEXT_PROTO(R"pb(
+    range { start: 1 end: 3 }
+  )pb");
+  commit_request.mutable_configuration()->PackFrom(commit_config);
+  absl::StatusOr<CommitResponse> commit_response =
+      session_->Commit(commit_request, context_);
+  ASSERT_THAT(commit_response, IsOk());
+  EXPECT_EQ(commit_response->stats().num_inputs_committed(), 0);
+  EXPECT_EQ(commit_response->stats().ignored_errors_size(), 1);
+
   FedSqlContainerFinalizeConfiguration finalize_config = PARSE_TEXT_PROTO(R"pb(
     type: FINALIZATION_TYPE_REPORT_AUTOTUNING_PARAMS
   )pb");
