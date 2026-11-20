@@ -482,7 +482,7 @@ impl<SC: StorageClient, S: Signer, PS: PayloadSigner> KeyManagementService<SC, S
         // be used again.
         let mut blocked_policies = src_value.blocked_policies;
         // Only keep blocked policies that have not expired.
-        blocked_policies.retain(|p| Self::timestamp_lt(&p.expiration, &Some(now)));
+        blocked_policies.retain(|p| Self::timestamp_lt(&Some(now), &p.expiration));
         let hashes_to_block: Vec<Vec<u8>> =
             all_hashes.difference(&common_hashes).cloned().cloned().collect();
         if !hashes_to_block.is_empty() {
@@ -795,6 +795,9 @@ where
         // pipeline state indicate should be blocked.
         let policy_blocklist: hashbrown::HashSet<Vec<u8>> = blocked_policies
             .into_iter()
+            // Ignore blocklist entries that have expired but haven't been
+            // removed yet (they're only removed when a result is released).
+            .filter(|p| response.now.is_none() || Self::timestamp_lt(&response.now, &p.expiration))
             .flat_map(|p| p.authorized_logical_pipeline_policy_hashes)
             .collect();
         let (blocked_hashes, authorized_logical_pipeline_policies_hashes): (Vec<_>, Vec<_>) =

@@ -2465,6 +2465,102 @@ async fn release_results_blocklist_entries_expire() {
     );
 }
 
+#[gtest]
+#[test_log::test(tokio::test)]
+async fn release_results_blocklist_entries_survive_later_releases() {
+    let now = Arc::new(AtomicI64::new(10_000));
+    let storage_client = FakeStorageClient::new(now.clone());
+    assert_that!(storage_client.update(get_init_request()).await, ok(anything()));
+    let kms = KeyManagementService::new(storage_client, FakeSigner {}, MockPayloadSigner::new());
+
+    // Create one key that outlives the test. Any blocklist entries created
+    // should expire when the key does (13000).
+    let request =
+        RotateKeysetRequest { keyset_id: 123, ttl: Some(Duration { seconds: 3000, nanos: 0 }) };
+    assert_that!(kms.rotate_keyset(request.into_request()).await, ok(anything()));
+
+    // Define 2 different AuthorizedLogicalPipelinePolicies messages.
+    let logical_pipeline_name = "test";
+    let variant_policy = PipelineVariantPolicy {
+        transforms: vec![Transform {
+            src_node_ids: vec![0],
+            dst_node_ids: vec![1],
+            application: Some(ApplicationMatcher {
+                reference_values: Some(get_test_reference_values()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+    };
+    let policies: Vec<_> = (0..2)
+        .map(|i| {
+            AuthorizedLogicalPipelinePolicies {
+                pipelines: [
+                    (
+                        logical_pipeline_name.into(),
+                        LogicalPipelinePolicy { instances: vec![variant_policy.clone()] },
+                    ),
+                    // Add an additional entry to make the policies distinct.
+                    (format!("policy-{i}"), LogicalPipelinePolicy::default()),
+                ]
+                .into(),
+            }
+            .encode_to_vec()
+        })
+        .collect();
+
+    // Simulate four pipeline invocations, 100 seconds apart. The second
+    // invocation blocks policy 0. The third releases another result while
+    // that block is still active. The fourth attempts to use both policies.
+    let mut results = Vec::new();
+    let mut state: Option<Vec<u8>> = None;
+    for policies in [&policies[0..1], &policies[1..2], &policies[1..2], &policies[..]] {
+        now.fetch_add(100, Ordering::Relaxed);
+        let (_, protected_response, associated_data, signing_key_endorsement) =
+            register_and_authorize_with_options(
+                &kms,
+                logical_pipeline_name,
+                &variant_policy,
+                RegisterAndAuthorizeOptions {
+                    keyset_ids: vec![123],
+                    authorized_logical_pipeline_policies: policies.to_vec(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("failed to register and authorize pipeline transform");
+
+        // Release a result, changing the state each time.
+        let src_state = state.clone();
+        state = Some([&state.unwrap_or_default(), b"x".as_slice()].concat());
+        let release_token = create_release_token(
+            b"plaintext",
+            src_state.as_deref(),
+            state.as_ref().unwrap(),
+            &protected_response.result_encryption_keys[0],
+        )
+        .expect("failed to create release token");
+        let request = ReleaseResultsRequest {
+            releasable_results: vec![ReleasableResult { release_token, signing_key_endorsement }],
+        };
+        kms.release_results(request.into_request()).await.expect("release_results failed");
+        results.push((protected_response, associated_data));
+    }
+
+    // The fourth invocation should only get the key for policy 1. The block
+    // on policy 0 should have survived the third invocation's release.
+    let (protected_response, associated_data) = &results[3];
+    expect_that!(protected_response.decryption_keys, len(eq(1)));
+    // The last 4 bytes of the omitted key id should match the first 4 bytes
+    // of the policy hash.
+    expect_that!(
+        associated_data.omitted_decryption_key_ids,
+        elements_are![
+            predicate(|key_id: &Vec<u8>| key_id[4..] == Sha256::hash(&policies[0])[0..4])
+        ]
+    );
+}
+
 mod storage_key {
     use googletest::prelude::*;
     use key_management_service::StorageKey;
