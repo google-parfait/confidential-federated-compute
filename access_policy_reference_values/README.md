@@ -1,16 +1,15 @@
 # Access Policy Endorsement Reference Values (ERVs)
 
 This directory holds `fcp.confidentialcompute.AccessPolicyEndorsementOptions`
-messages, which in turn contain `oak.attestation.v1.EndorsementReferenceValue`
-(ERV) messages, used by various client applications that use confidential
-federated computations to verify that the access policies, which describe how
-uploaded data is allowed to be processed, are valid and published to the Rekor
+messages used by various client applications that use confidential federated
+computations to verify that the access policies, which describe how uploaded
+data is allowed to be processed, are valid and published to the Rekor
 transparency log.
 
-ERVs consist of a per-app public signing key with which access policy
-endorsements are verified, and Rekor's public signing key, with which the
-inclusion of the access policy endorsement in the Rekor log (an inclusion proof)
-is verified.
+Each message contains the public keys with which KMS TEE evidence endorsements
+are verified, a per-app public key with which access policy endorsements are
+verified, and Rekor's public key, with which the inclusion of the access policy
+endorsement in the Rekor log (an inclusion proof) is verified.
 
 Note that since these reference values are compiled into the client binaries,
 older clients may be using older versions of these reference values.
