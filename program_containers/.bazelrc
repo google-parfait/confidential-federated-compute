@@ -9,7 +9,12 @@ build --define xnn_enable_avxvnni=false
 build --define xnn_enable_avxvnniint8=false
 build --define xnn_enable_x86_amxfp16=false
 
+# Bazel 8 disables WORKSPACE, disallows empty globs (needed by @go_sdk), and
+# disables legacy external/ runfiles (needed by trusted_py_runtime) by default.
 common --noenable_bzlmod
+common --enable_workspace
+common --incompatible_disallow_empty_glob=false
+common --legacy_external_runfiles=true
 common --repo_env=HERMETIC_PYTHON_VERSION=3.12
 
 # This is needed to make linking a `rust_library` into a `cc_library` (and therefore having it
