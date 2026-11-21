@@ -131,7 +131,7 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-UTVyhXLd6HTzx/NFUJH5l9z1G7fOZJ+/pqUoS/TCBVE=",
+    integrity = "sha256-uhDQPOarn1g7/4AIv4nmQ9r6OiLYfiT8MMaSuQg+5vI=",
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
@@ -142,8 +142,8 @@ http_archive(
         "@confidential_federated_compute//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-b79b9c54fa02271268fa4acb39b08e20e39f862d",
-    url = "https://github.com/google-parfait/federated-compute/archive/b79b9c54fa02271268fa4acb39b08e20e39f862d.tar.gz",
+    strip_prefix = "federated-compute-e3bde2aa76ff968480200eed2425c7e0fc64c640",
+    url = "https://github.com/google-parfait/federated-compute/archive/e3bde2aa76ff968480200eed2425c7e0fc64c640.tar.gz",
 )
 
 http_archive(
@@ -203,15 +203,15 @@ http_archive(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
+    integrity = "sha256-ogCp+E6eqHhP0WjEUuv9Dg06IMJB0M/fNnTP2xV9ROg=",
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:session_binder.patch",
         "@confidential_federated_compute_program//third_party/oak:noise_message_limit.patch",
         "@confidential_federated_compute_program//third_party/oak:tr_c2sp.patch",
     ],
-    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
-    url = "https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz",
+    strip_prefix = "oak-f07cdb50315cbb3dff7dd4b0e6b9505f425bf42e",
+    url = "https://github.com/project-oak/oak/archive/f07cdb50315cbb3dff7dd4b0e6b9505f425bf42e.tar.gz",
 )
 
 http_archive(
