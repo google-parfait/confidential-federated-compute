@@ -17,6 +17,7 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 exports_files([
+    "bazel8_workspace.patch",
     "cython.patch",
     "internal_visibility.patch",
     "xla_xxd.patch",

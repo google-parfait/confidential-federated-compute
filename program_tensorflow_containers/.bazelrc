@@ -24,7 +24,12 @@ common --define=no_gcp_support=true
 common --define=no_hdfs_support=true
 common --@rules_python//python/config_settings:precompile=force_disabled
 common --repo_env=RULES_PYTHON_ENABLE_PIPSTAR=0
+# Bazel 8 disables WORKSPACE, disallows empty globs (needed by @go_sdk), and
+# disables legacy external/ runfiles (needed by trusted_py_runtime) by default.
 common --noenable_bzlmod
+common --enable_workspace
+common --incompatible_disallow_empty_glob=false
+common --legacy_external_runfiles=true
 common --repo_env=TF_PYTHON_VERSION=3.12
 common --repo_env=PYTHON_BIN_PATH=/usr/bin/python3.12
 common --repo_env=USE_HERMETIC_CC_TOOLCHAIN=1

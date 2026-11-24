@@ -23,40 +23,6 @@ index 0704e19..7fe6a70 100644
      ],
  )
  
-diff --git tensorflow_federated/cc/core/impl/aggregation/core/BUILD tensorflow_federated/cc/core/impl/aggregation/core/BUILD
-index 1b30773..da942c7 100644
---- tensorflow_federated/cc/core/impl/aggregation/core/BUILD
-+++ tensorflow_federated/cc/core/impl/aggregation/core/BUILD
-@@ -12,10 +12,9 @@
- # See the License for the specific language governing permissions and
- # limitations under the License.
- 
--load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
--load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
--load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
--load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
-+load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_proto_library")
-+load("@rules_proto//proto:defs.bzl", "proto_library")
-+load("@rules_java//java:defs.bzl", "java_proto_library")
- load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
- load("@rules_cc//cc:cc_library.bzl", "cc_library")
- load("@rules_cc//cc:cc_test.bzl", "cc_test")
-diff --git tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD
-index 670a8dc..2d72e5d 100644
---- tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD
-+++ tensorflow_federated/cc/core/impl/aggregation/protocol/BUILD
-@@ -12,9 +12,8 @@
- # See the License for the specific language governing permissions and
- # limitations under the License.
- 
--load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
--load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
--load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
-+load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_proto_library")
-+load("@rules_proto//proto:defs.bzl", "proto_library")
- load("@rules_cc//cc:cc_library.bzl", "cc_library")
- load("@rules_cc//cc:cc_test.bzl", "cc_test")
- 
 diff --git tensorflow_federated/cc/core/impl/executors/executor_bindings.cc tensorflow_federated/cc/core/impl/executors/executor_bindings.cc
 index facf67d..e655ef7 100644
 --- tensorflow_federated/cc/core/impl/executors/executor_bindings.cc
@@ -70,18 +36,3 @@ index facf67d..e655ef7 100644
  #include "include/grpcpp/security/credentials.h"
  #include "include/grpcpp/support/channel_arguments.h"
  #include "federated_language/proto/computation.pb.h"
-diff --git tensorflow_federated/proto/v0/BUILD tensorflow_federated/proto/v0/BUILD
-index bf1f6e1..3e0cec1 100644
---- tensorflow_federated/proto/v0/BUILD
-+++ tensorflow_federated/proto/v0/BUILD
-@@ -1,8 +1,6 @@
- load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
--load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library")
--load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
--load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
--load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
-+load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library", "py_proto_library")
-+load("@rules_proto//proto:defs.bzl", "proto_library")
- load("@rules_python//python:defs.bzl", "py_library")
- 
- package(

@@ -131,7 +131,7 @@ http_archive(
 
 http_archive(
     name = "federated_compute",
-    integrity = "sha256-UTVyhXLd6HTzx/NFUJH5l9z1G7fOZJ+/pqUoS/TCBVE=",
+    integrity = "sha256-uhDQPOarn1g7/4AIv4nmQ9r6OiLYfiT8MMaSuQg+5vI=",
     patch_cmds = [
         "sed -i 's|@pypi//jax_privacy|@jax_privacy//jax_privacy|g' fcp/confidentialcompute/python/BUILD",
         "sed -i 's|\"@pypi//tensorflow\"|\"@pypi//tensorflow_cpu\"|g' fcp/confidentialcompute/python/BUILD",
@@ -142,14 +142,13 @@ http_archive(
         "@confidential_federated_compute//third_party/federated_compute:libcppbor.patch",
     ],
     repo_mapping = {"@com_google_googletest": "@googletest"},
-    strip_prefix = "federated-compute-b79b9c54fa02271268fa4acb39b08e20e39f862d",
-    url = "https://github.com/google-parfait/federated-compute/archive/b79b9c54fa02271268fa4acb39b08e20e39f862d.tar.gz",
+    strip_prefix = "federated-compute-e3bde2aa76ff968480200eed2425c7e0fc64c640",
+    url = "https://github.com/google-parfait/federated-compute/archive/e3bde2aa76ff968480200eed2425c7e0fc64c640.tar.gz",
 )
 
 http_archive(
     name = "federated_language",
     patches = [
-        "@org_tensorflow_federated//third_party/federated_language:proto_library_loads.patch",
         "@confidential_federated_compute_program//third_party/federated_language:structure_visibility.patch",
         "@confidential_federated_compute_program//third_party/federated_language:python_toolchain.patch",
     ],
@@ -203,15 +202,15 @@ http_archive(
 
 http_archive(
     name = "oak",
-    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
+    integrity = "sha256-ogCp+E6eqHhP0WjEUuv9Dg06IMJB0M/fNnTP2xV9ROg=",
     patches = [
         "//third_party/oak:oak_attestation_verification.patch",
         "//third_party/oak:session_binder.patch",
         "@confidential_federated_compute_program//third_party/oak:noise_message_limit.patch",
         "@confidential_federated_compute_program//third_party/oak:tr_c2sp.patch",
     ],
-    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
-    url = "https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz",
+    strip_prefix = "oak-f07cdb50315cbb3dff7dd4b0e6b9505f425bf42e",
+    url = "https://github.com/project-oak/oak/archive/f07cdb50315cbb3dff7dd4b0e6b9505f425bf42e.tar.gz",
 )
 
 http_archive(
@@ -227,6 +226,7 @@ http_archive(
 http_archive(
     name = "org_tensorflow",
     patches = [
+        "//third_party/org_tensorflow:bazel8_workspace.patch",
         "//third_party/org_tensorflow:cython.patch",
         "//third_party/org_tensorflow:internal_visibility.patch",
         "//third_party/org_tensorflow:xla_xxd.patch",
@@ -297,9 +297,9 @@ http_archive(
 
 http_archive(
     name = "rules_proto",
-    sha256 = "6fb6767d1bef535310547e03247f7518b03487740c11b6c6adb7952033fe1295",
-    strip_prefix = "rules_proto-6.0.2",
-    url = "https://github.com/bazelbuild/rules_proto/releases/download/6.0.2/rules_proto-6.0.2.tar.gz",
+    sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
+    strip_prefix = "rules_proto-7.1.0",
+    url = "https://github.com/bazelbuild/rules_proto/releases/download/7.1.0/rules_proto-7.1.0.tar.gz",
 )
 
 http_archive(
@@ -350,6 +350,17 @@ load("@confidential_federated_compute_program//:stub_repo.bzl", "stub_repo")
 stub_repo(
     name = "com_github_grpc_grpc_kotlin",
     rules = {":kt_jvm_grpc.bzl": ["kt_jvm_grpc_library"]},
+)
+
+# TensorFlow's workspace3.bzl pins a 2019 rules_closure archive, and
+# workspace1.bzl loads @io_bazel_rules_closure//closure:defs.bzl during
+# WORKSPACE evaluation. That archive references the removed built-in ProtoInfo
+# global, which Bazel 8 cannot autoload during the WORKSPACE phase. Stub out
+# the unused repo so workspace3.bzl skips the archive and closure_repositories()
+# becomes a no-op.
+stub_repo(
+    name = "io_bazel_rules_closure",
+    rules = {"closure:defs.bzl": ["closure_repositories"]},
 )
 
 stub_repo(

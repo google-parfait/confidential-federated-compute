@@ -61,15 +61,15 @@ local_path_override(
 
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-v0FFMxIF5So4vBCinqbf60A19ttXDWT+3gYrqBzipO4=",
+    integrity = "sha256-uhDQPOarn1g7/4AIv4nmQ9r6OiLYfiT8MMaSuQg+5vI=",
     patches = ["@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch"],
-    strip_prefix = "federated-compute-aad3eb5a4b6d075978ec3e126a036be6022f6012",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/aad3eb5a4b6d075978ec3e126a036be6022f6012.tar.gz"],
+    strip_prefix = "federated-compute-e3bde2aa76ff968480200eed2425c7e0fc64c640",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/e3bde2aa76ff968480200eed2425c7e0fc64c640.tar.gz"],
 )
 
 archive_override(
     module_name = "oak",
-    integrity = "sha256-ZV8oBz/apV5MUQzpkbNb1PGRT+5/TjbvNTIkrdlIhME=",
+    integrity = "sha256-ogCp+E6eqHhP0WjEUuv9Dg06IMJB0M/fNnTP2xV9ROg=",
     patch_strip = 1,
     patches = [
         "//third_party/oak:module.patch",
@@ -78,12 +78,10 @@ archive_override(
         "//third_party/oak:oak_enclave_runtime_support_lib.patch",
         "//third_party/oak:oak_restricted_kernel_sdk_lib.patch",
         "//third_party/oak:session_binder.patch",
-        "//third_party/oak:session_binding_token_compat.patch",
-        "//third_party/oak:session_binding_token_sign_new.patch",
         "//third_party/oak:tr_c2sp.patch",
     ],
-    strip_prefix = "oak-fe9cc4a289863bf70f623dc4d096e21d2cad8d2f",
-    urls = ["https://github.com/project-oak/oak/archive/fe9cc4a289863bf70f623dc4d096e21d2cad8d2f.tar.gz"],
+    strip_prefix = "oak-f07cdb50315cbb3dff7dd4b0e6b9505f425bf42e",
+    urls = ["https://github.com/project-oak/oak/archive/f07cdb50315cbb3dff7dd4b0e6b9505f425bf42e.tar.gz"],
 )
 
 archive_override(

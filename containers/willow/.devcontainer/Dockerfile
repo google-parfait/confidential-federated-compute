@@ -1,9 +1,9 @@
 FROM mcr.microsoft.com/vscode/devcontainers/base:ubuntu-22.04
 
 # Install Bazel
-ARG BAZEL_VERSION=8.2.1
+ARG BAZEL_VERSION=8.9.0
 ARG BAZEL_COMPLETE_HEADER_SHA=1b9386d3c7cb348bd9981df62cf569cfc11ca891fdb6a1f1ab10257480e2d651
-ARG BAZEL_COMPLETE_TEMPLATE_SHA=e37e50fabd701ec80ddbe2ed304e44656858cb6df9b0004dc7b805b2dd4959f9
+ARG BAZEL_COMPLETE_TEMPLATE_SHA=3f7b50f03748aea80ad3222eb7466cf34484a09bc1bd9270feeb14f20f906384
 ARG BAZELISK_VERSION=v1.25.0
 ARG BAZELISK_DOWNLOAD_SHA=dev-mode
 RUN curl -fSsL -o /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-amd64 \

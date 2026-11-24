@@ -1,0 +1,102 @@
+# Backports Bazel 8 WORKSPACE compatibility fixes to @org_tensorflow (v2.21.0):
+# 1. Loads py_runtime_pair from @rules_python instead of @bazel_tools and
+#    drops PY2 py_runtime targets in third_party/{,xla/third_party/}py/BUILD.tpl.
+# 2. Loads C++ and Windows autoconf helpers from @rules_cc instead of
+#    @bazel_tools in bundled XLA, and defines auto_configure_fail locally.
+#
+# Why @org_tensorflow needs this patch:
+# TensorFlow v2.21.0 still pins Bazel 7.7.0. Bazel 8 removed those @bazel_tools
+# Starlark files and autoloads py_runtime from @rules_python, which fails on
+# python_version = "PY2".
+#
+# When we can drop this patch:
+# Upstream openxla/xla (on Bazel 8.7.0, as pinned in program_containers) already
+# includes the XLA hunks. Drop this patch once @org_tensorflow upgrades past
+# v2.21.0 to a TensorFlow release that supports Bazel 8 and drops PY2 runtimes.
+
+diff --git third_party/py/BUILD.tpl third_party/py/BUILD.tpl
+--- third_party/py/BUILD.tpl
++++ third_party/py/BUILD.tpl
+@@ -4,23 +4,16 @@
+ 
+ # Point both runtimes to the same python binary to ensure we always
+ # use the python binary specified by ./configure.py script.
+-load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+-
+-py_runtime(
+-    name = "py2_runtime",
+-    interpreter = "%{PYTHON_INTERPRETER}",
+-    python_version = "PY2",
+-)
++load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
+ 
+ py_runtime(
+     name = "py3_runtime",
+     interpreter = "%{PYTHON_INTERPRETER}",
+     python_version = "PY3",
+ )
+ 
+ py_runtime_pair(
+     name = "py_runtime_pair",
+-    py2_runtime = ":py2_runtime",
+     py3_runtime = ":py3_runtime",
+ )
+ 
+diff --git third_party/xla/third_party/clang_toolchain/cc_configure_clang.bzl third_party/xla/third_party/clang_toolchain/cc_configure_clang.bzl
+--- third_party/xla/third_party/clang_toolchain/cc_configure_clang.bzl
++++ third_party/xla/third_party/clang_toolchain/cc_configure_clang.bzl
+@@ -1,6 +1,6 @@
+ """ Downloads clang and configures the crosstool using bazel's autoconf."""
+ 
+-load("@bazel_tools//tools/cpp:cc_configure.bzl", "cc_autoconf_impl")
++load("@rules_cc//cc/private/toolchain:cc_configure.bzl", "cc_autoconf_impl")  # buildifier: disable=bzl-visibility
+ load(":download_clang.bzl", "download_clang")
+ 
+ _TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
+diff --git third_party/xla/third_party/py/BUILD.tpl third_party/xla/third_party/py/BUILD.tpl
+--- third_party/xla/third_party/py/BUILD.tpl
++++ third_party/xla/third_party/py/BUILD.tpl
+@@ -4,23 +4,16 @@
+ 
+ # Point both runtimes to the same python binary to ensure we always
+ # use the python binary specified by ./configure.py script.
+-load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+-
+-py_runtime(
+-    name = "py2_runtime",
+-    interpreter = "%{PYTHON_INTERPRETER}",
+-    python_version = "PY2",
+-)
++load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
+ 
+ py_runtime(
+     name = "py3_runtime",
+     interpreter = "%{PYTHON_INTERPRETER}",
+     python_version = "PY3",
+ )
+ 
+ py_runtime_pair(
+     name = "py_runtime_pair",
+-    py2_runtime = ":py2_runtime",
+     py3_runtime = ":py3_runtime",
+ )
+ 
+diff --git third_party/xla/tools/def_file_filter/def_file_filter_configure.bzl third_party/xla/tools/def_file_filter/def_file_filter_configure.bzl
+--- third_party/xla/tools/def_file_filter/def_file_filter_configure.bzl
++++ third_party/xla/tools/def_file_filter/def_file_filter_configure.bzl
+@@ -19,8 +19,13 @@
+   * `VS140COMNTOOLS`
+ """
+ 
+-load("@bazel_tools//tools/cpp:lib_cc_configure.bzl", "auto_configure_fail")
+-load("@bazel_tools//tools/cpp:windows_cc_configure.bzl", "find_msvc_tool", "find_vc_path")
++load("@rules_cc//cc/private/toolchain:windows_cc_configure.bzl", "find_msvc_tool", "find_vc_path")  # buildifier: disable=bzl-visibility
++
++def auto_configure_fail(msg):
++    """Output failure message when def file filter configuration fails."""
++    red = "\033[0;31m"
++    no_color = "\033[0m"
++    fail("\n%sDef File Filter Configuration Error:%s %s\n" % (red, no_color, msg))
+ 
+ def _def_file_filter_configure_impl(repository_ctx):
+     if repository_ctx.os.name.lower().find("windows") == -1:
