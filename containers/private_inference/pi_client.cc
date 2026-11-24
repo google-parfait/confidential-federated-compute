@@ -161,20 +161,8 @@ class PiClientImpl : public PiClient {
   }
 
   absl::StatusOr<std::string> Generate(const std::string& prompt) override {
-    PcsPrivateArateaRequest request;
-    request.set_feature_name(feature_name_);
-
-    PcsGenerateContentRequest generate_request;
-    generate_request.add_contents()->add_parts()->set_text(prompt);
-    if (runtime_config_.max_generated_tokens() > 0) {
-      generate_request.mutable_generation_config()->set_max_output_tokens(
-          runtime_config_.max_generated_tokens());
-    }
-    if (runtime_config_.temperature_diff() != 0.0) {
-      generate_request.mutable_generation_config()->set_temperature(
-          kDefaultTemperature + runtime_config_.temperature_diff());
-    }
-    *request.mutable_generate_content_request() = generate_request;
+    PcsPrivateArateaRequest request = internal::BuildPrivateArateaRequest(
+        feature_name_, prompt, runtime_config_);
 
     auto write_status = session_->Write(request.SerializeAsString());
     if (!write_status.ok()) {
@@ -301,6 +289,36 @@ class PiClientImpl : public PiClient {
 };
 
 }  // namespace
+
+namespace internal {
+
+PcsPrivateArateaRequest BuildPrivateArateaRequest(
+    int feature_name_id, absl::string_view prompt,
+    const RuntimeConfig& runtime_config) {
+  PcsPrivateArateaRequest request;
+  request.set_feature_name(
+      static_cast<PcsPrivateInferenceFeatureName>(feature_name_id));
+
+  PcsGenerateContentRequest* generate_request =
+      request.mutable_generate_content_request();
+  generate_request->add_contents()->add_parts()->set_text(prompt);
+  if (runtime_config.max_generated_tokens() > 0) {
+    generate_request->mutable_generation_config()->set_max_output_tokens(
+        runtime_config.max_generated_tokens());
+  }
+  if (runtime_config.temperature_diff() != 0.0) {
+    generate_request->mutable_generation_config()->set_temperature(
+        kDefaultTemperature + runtime_config.temperature_diff());
+  }
+  if (runtime_config.has_thinking_budget()) {
+    generate_request->mutable_generation_config()
+        ->mutable_thinking_config()
+        ->set_thinking_budget(runtime_config.thinking_budget());
+  }
+  return request;
+}
+
+}  // namespace internal
 
 absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
     std::string server_address, int feature_name_id,

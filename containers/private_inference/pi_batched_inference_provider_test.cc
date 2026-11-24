@@ -67,6 +67,9 @@ TEST(PiBatchedInferenceProviderTest, GetEngineSucceedsWithRuntimeConfig) {
   init_config.mutable_inference_config()
       ->mutable_runtime_config()
       ->set_temperature_diff(-0.3);
+  init_config.mutable_inference_config()
+      ->mutable_runtime_config()
+      ->set_thinking_budget(512);
   auto engine = provider.GetEngineForInferenceConfig(init_config, {});
   ASSERT_TRUE(engine.ok()) << engine.status();
   EXPECT_NE(*engine, nullptr);

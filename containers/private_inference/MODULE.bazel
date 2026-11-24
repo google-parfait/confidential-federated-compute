@@ -112,10 +112,10 @@ bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "federated-compute", repo_name = "federated_compute")
 archive_override(
     module_name = "federated-compute",
-    integrity = "sha256-uhDQPOarn1g7/4AIv4nmQ9r6OiLYfiT8MMaSuQg+5vI=",
+    integrity = "sha256-IowlqZBas+8oOnTcatobeociCPhMl0POfOBcUq73hPg=",
     patches = ["@@confidential-federated-compute+//third_party/federated_compute:libcppbor.patch"],
-    strip_prefix = "federated-compute-e3bde2aa76ff968480200eed2425c7e0fc64c640",
-    urls = ["https://github.com/google-parfait/federated-compute/archive/e3bde2aa76ff968480200eed2425c7e0fc64c640.tar.gz"],
+    strip_prefix = "federated-compute-99bf1fb2db165734de8e6a3982503e9b4bd74793",
+    urls = ["https://github.com/google-parfait/federated-compute/archive/99bf1fb2db165734de8e6a3982503e9b4bd74793.tar.gz"],
 )
 
 fcp_deps = use_extension("@federated_compute//fcp:extensions.bzl", "fcp_deps")

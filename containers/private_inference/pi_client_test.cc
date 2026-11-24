@@ -264,13 +264,61 @@ TEST(PiClientTest, CreatePiClientAcceptsRuntimeConfig) {
   ::fcp::confidentialcompute::RuntimeConfig runtime_config;
   runtime_config.set_max_generated_tokens(64);
   runtime_config.set_temperature_diff(-0.5);
+  runtime_config.set_thinking_budget(512);
   auto client_or = CreatePiClient("localhost:12345", 100, runtime_config);
   ASSERT_TRUE(client_or.ok());
   EXPECT_NE(client_or.value(), nullptr);
 }
 
-// The PcsGenerationConfig subset must stay wire-compatible with the server's
-// GenerationConfig: temperature = 1, max_output_tokens = 5.
+TEST(PiClientTest, BuildPrivateArateaRequestOmitsUnsetThinkingBudget) {
+  ::fcp::confidentialcompute::RuntimeConfig runtime_config;
+  auto request =
+      internal::BuildPrivateArateaRequest(100, "hello", runtime_config);
+  EXPECT_FALSE(request.generate_content_request().has_generation_config());
+}
+
+TEST(PiClientTest, BuildPrivateArateaRequestForwardsZeroThinkingBudget) {
+  ::fcp::confidentialcompute::RuntimeConfig runtime_config;
+  runtime_config.set_thinking_budget(0);
+  auto request =
+      internal::BuildPrivateArateaRequest(100, "hello", runtime_config);
+  ASSERT_TRUE(request.generate_content_request().has_generation_config());
+  const auto& generation_config =
+      request.generate_content_request().generation_config();
+  ASSERT_TRUE(generation_config.has_thinking_config());
+  EXPECT_TRUE(generation_config.thinking_config().has_thinking_budget());
+  EXPECT_EQ(generation_config.thinking_config().thinking_budget(), 0);
+}
+
+TEST(PiClientTest,
+     BuildPrivateArateaRequestForwardsNegativeOneAndPositiveBudget) {
+  ::fcp::confidentialcompute::RuntimeConfig dynamic_config;
+  dynamic_config.set_thinking_budget(-1);
+  auto dynamic_request =
+      internal::BuildPrivateArateaRequest(100, "hello", dynamic_config);
+  EXPECT_EQ(dynamic_request.generate_content_request()
+                .generation_config()
+                .thinking_config()
+                .thinking_budget(),
+            -1);
+
+  ::fcp::confidentialcompute::RuntimeConfig budget_config;
+  budget_config.set_max_generated_tokens(128);
+  budget_config.set_temperature_diff(-0.3);
+  budget_config.set_thinking_budget(512);
+  auto budget_request =
+      internal::BuildPrivateArateaRequest(100, "hello", budget_config);
+  const auto& generation_config =
+      budget_request.generate_content_request().generation_config();
+  EXPECT_EQ(generation_config.max_output_tokens(), 128);
+  EXPECT_FLOAT_EQ(generation_config.temperature(), 0.7f);
+  EXPECT_EQ(generation_config.thinking_config().thinking_budget(), 512);
+}
+
+// The PcsGenerationConfig and PcsThinkingConfig subsets must stay
+// wire-compatible with the server's GenerationConfig (temperature = 1,
+// max_output_tokens = 5, thinking_config = 10) and ThinkingConfig
+// (thinking_budget = 1).
 TEST(PiClientTest, PcsGenerationConfigFieldNumbersMatchServerProto) {
   const auto* descriptor =
       ::mdi::privatearatea::PcsGenerationConfig::descriptor();
@@ -278,6 +326,14 @@ TEST(PiClientTest, PcsGenerationConfigFieldNumbersMatchServerProto) {
   EXPECT_EQ(descriptor->FindFieldByName("temperature")->number(), 1);
   ASSERT_NE(descriptor->FindFieldByName("max_output_tokens"), nullptr);
   EXPECT_EQ(descriptor->FindFieldByName("max_output_tokens")->number(), 5);
+  ASSERT_NE(descriptor->FindFieldByName("thinking_config"), nullptr);
+  EXPECT_EQ(descriptor->FindFieldByName("thinking_config")->number(), 10);
+
+  const auto* thinking_descriptor =
+      ::mdi::privatearatea::PcsThinkingConfig::descriptor();
+  ASSERT_NE(thinking_descriptor->FindFieldByName("thinking_budget"), nullptr);
+  EXPECT_EQ(thinking_descriptor->FindFieldByName("thinking_budget")->number(),
+            1);
 
   const auto* request_descriptor =
       ::mdi::privatearatea::PcsGenerateContentRequest::descriptor();
