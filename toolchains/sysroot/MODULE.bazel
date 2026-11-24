@@ -22,8 +22,8 @@ apt.sources_list(
     suites = ["bookworm"],
     types = ["deb"],
     uris = [
-        "https://snapshot-cloudflare.debian.org/archive/debian/20260815T000000Z",
-        "https://snapshot.debian.org/archive/debian/20260815T000000Z",
+        "https://snapshot-cloudflare.debian.org/archive/debian/20261124T000000Z",
+        "https://snapshot.debian.org/archive/debian/20261124T000000Z",
     ],
 )
 apt.sources_list(
@@ -32,8 +32,8 @@ apt.sources_list(
     suites = ["bookworm-security"],
     types = ["deb"],
     uris = [
-        "https://snapshot-cloudflare.debian.org/archive/debia-security/20260815T000000Z",
-        "https://snapshot.debian.org/archive/debian-security/20260815T000000Z",
+        "https://snapshot-cloudflare.debian.org/archive/debian-security/20261124T000000Z",
+        "https://snapshot.debian.org/archive/debian-security/20261124T000000Z",
     ],
 )
 apt.install(
