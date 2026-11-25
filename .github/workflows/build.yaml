@@ -28,8 +28,8 @@ jobs:
           - {root: containers/private_evolution/sentence_transformers, name: sentence_transformers}
           - {root: containers/willow, name: willow}
           - {root: kms, name: kms}
-          - {root: program_containers, name: program_containers}
-          - {root: program_tensorflow_containers, name: program_tensorflow_containers}
+          - {root: program_containers, name: program_containers, runs-on: large-16cpu-64gbRAM-600gbSSD-ubuntu24.04}
+          - {root: program_tensorflow_containers, name: program_tensorflow_containers, runs-on: large-16cpu-64gbRAM-600gbSSD-ubuntu24.04}
 
     permissions:
       contents: read
@@ -40,5 +40,6 @@ jobs:
     with:
       name: ${{ matrix.module-root.name }}
       module-root: ${{ matrix.module-root.root }}
+      runs-on: ${{ matrix.module-root.runs-on }}
     secrets:
       gcp-credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY_JSON }}

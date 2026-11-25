@@ -9,6 +9,9 @@ on:
       module-root:
         required: true
         type: string
+      runs-on:
+        required: false
+        type: string
     secrets:
       gcp-credentials:
         required: true
@@ -20,7 +23,7 @@ jobs:
     permissions:
       contents: read
 
-    runs-on: large-8cpu-32gbRAM-300gbSSD-ubuntu24.04
+    runs-on: ${{ inputs.runs-on || 'large-8cpu-32gbRAM-300gbSSD-ubuntu24.04' }}
 
     steps:
       - name: Checkout
