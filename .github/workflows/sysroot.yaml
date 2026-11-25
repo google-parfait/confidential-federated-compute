@@ -28,7 +28,7 @@ jobs:
       - name: Build
         run: |
           cd toolchains/sysroot
-          bazelisk build -c opt --curses=no --noshow_progress //:sysroot
+          bazelisk build -c opt --curses=no --show_progress_rate_limit=60 //:sysroot
       - name: Attest
         uses: actions/attest-build-provenance@v2
         with:
