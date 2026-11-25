@@ -83,8 +83,8 @@ use_repo(oak_crates, "oak_crates_index")
 
 http_archive(
     name = "sysroot",
-    sha256 = "6cee0a33ec5646372050451f4a82fed58a872307381f6698d95cf91ab1f80715",
-    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20260815/sysroot.tar.xz",
+    sha256 = "ddf4e21fe0f9dc26391dd5d2e3b0ef023064581ca6cfa706da0450f5323b1b84",
+    url = "https://github.com/google-parfait/confidential-federated-compute/releases/download/sysroot-20261124/sysroot.tar.xz",
 )
 
 # Set up python toolchain
