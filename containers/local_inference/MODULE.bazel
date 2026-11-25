@@ -144,6 +144,11 @@ use_repo(oak_crates, "oak_crates_index")
 # (like libxml2) from the sysroot, while still preferring the host's own
 # libraries (like libc and libstdc++).
 single_version_override(
+    module_name = "protobuf",
+    patches = ["@@confidential-federated-compute+//third_party/protobuf:option_interpreter.patch"],
+)
+
+single_version_override(
     module_name = "toolchains_llvm",
     patches = ["@@confidential-federated-compute+//third_party/toolchains_llvm:cc_wrapper.patch"],
 )

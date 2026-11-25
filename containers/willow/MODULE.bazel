@@ -63,6 +63,7 @@ archive_override(
     patches = [
         "//third_party/protobuf:syn.patch",
         "//third_party/protobuf:visibility.patch",
+        "@@confidential-federated-compute+//third_party/protobuf:option_interpreter.patch",
     ],
     strip_prefix = "protobuf-9151e03956a34b795ca0d58e19d8a9991904b459",
     urls = ["https://github.com/google/protobuf/archive/9151e03956a34b795ca0d58e19d8a9991904b459.zip"],

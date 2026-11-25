@@ -1,0 +1,137 @@
+# Reset the OptionInterpreter DynamicMessageFactory on each interpretation pass
+# to avoid stale prototypes.
+#
+# Origin:
+# Cherry-picked from upstream protocolbuffers/protobuf commit
+# https://github.com/protocolbuffers/protobuf/commit/f2014836400b68adf3a8639f8eba5ec5d0aa6f87
+# and adapted to protobuf 33.x, where OptionInterpreter is still defined inline
+# in src/google/protobuf/descriptor.cc.
+#
+# When this patch can be removed:
+# Remove once all modules upgrade to a protobuf release that includes commit
+# f2014836400b68adf3a8639f8eba5ec5d0aa6f87.
+--- src/google/protobuf/descriptor.cc
++++ src/google/protobuf/descriptor.cc
+@@ -4880,15 +4880,17 @@
+ 
+     ~OptionInterpreter();
+ 
+-    // Interprets the uninterpreted options in the specified Options message.
++    // Interprets the uninterpreted options in the specified Options messages.
+     // On error, calls AddError() on the underlying builder and returns false.
+     // Otherwise returns true.
+-    bool InterpretOptionExtensions(OptionsToInterpret* options_to_interpret);
++    bool InterpretOptionExtensions(
++        absl::Span<OptionsToInterpret> options_to_interpret);
+ 
+     // Interprets the uninterpreted feature options in the specified Options
+-    // message. On error, calls AddError() on the underlying builder and returns
+-    // false. Otherwise returns true.
+-    bool InterpretNonExtensionOptions(OptionsToInterpret* options_to_interpret);
++    // messages. On error, calls AddError() on the underlying builder and
++    // returns false. Otherwise returns true.
++    bool InterpretNonExtensionOptions(
++        absl::Span<OptionsToInterpret> options_to_interpret);
+ 
+     // Updates the given source code info by re-writing uninterpreted option
+     // locations to refer to the corresponding interpreted option.
+@@ -4897,6 +4899,9 @@
+     class AggregateOptionFinder;
+ 
+    private:
++    bool InterpretOptionsSpan(
++        absl::Span<OptionsToInterpret> options_to_interpret,
++        bool skip_extensions);
+     bool InterpretOptionsImpl(OptionsToInterpret* options_to_interpret,
+                               bool skip_extensions);
+ 
+@@ -5003,9 +5008,12 @@
+     // index portion of the element path when interpreting a single option.
+     absl::flat_hash_map<std::vector<int>, int> repeated_option_counts_;
+ 
+-    // Factory used to create the dynamic messages we need to parse
+-    // any aggregate option values we encounter.
+-    DynamicMessageFactory dynamic_factory_;
++    // Factory used to create the dynamic messages we need to parse any
++    // aggregate option values we encounter. Scoped to each
++    // InterpretOptionsSpan() call so prototypes cached before
++    // PostProcessFieldFeatures() cannot be reused in later passes after field
++    // representations (e.g., ctype) change.
++    std::optional<DynamicMessageFactory> dynamic_factory_;
+   };
+ 
+   // Work-around for broken compilers:  According to the C++ standard,
+@@ -6635,11 +6643,8 @@
+   // extensions defined in this file may have features attached to them.
+   if (!had_errors_) {
+     OptionInterpreter option_interpreter(this);
+-    for (std::vector<OptionsToInterpret>::iterator iter =
+-             options_to_interpret_.begin();
+-         iter != options_to_interpret_.end(); ++iter) {
+-      option_interpreter.InterpretNonExtensionOptions(&(*iter));
+-    }
++    option_interpreter.InterpretNonExtensionOptions(
++        absl::MakeSpan(options_to_interpret_));
+ 
+     // Handle feature resolution.  This must occur after option interpretation,
+     // but before validation.
+@@ -6672,11 +6677,8 @@
+     // Interpret any remaining uninterpreted options gathered into
+     // options_to_interpret_ during descriptor building.  Cross-linking has made
+     // extension options known, so all interpretations should now succeed.
+-    for (std::vector<OptionsToInterpret>::iterator iter =
+-             options_to_interpret_.begin();
+-         iter != options_to_interpret_.end(); ++iter) {
+-      option_interpreter.InterpretOptionExtensions(&(*iter));
+-    }
++    option_interpreter.InterpretOptionExtensions(
++        absl::MakeSpan(options_to_interpret_));
+     options_to_interpret_.clear();
+     if (info != nullptr) {
+       option_interpreter.UpdateSourceCodeInfo(info);
+@@ -9507,12 +9509,30 @@
+ DescriptorBuilder::OptionInterpreter::~OptionInterpreter() = default;
+ 
+ bool DescriptorBuilder::OptionInterpreter::InterpretOptionExtensions(
+-    OptionsToInterpret* options_to_interpret) {
+-  return InterpretOptionsImpl(options_to_interpret, /*skip_extensions=*/false);
+-}
++    absl::Span<OptionsToInterpret> options_to_interpret) {
++  return InterpretOptionsSpan(options_to_interpret, /*skip_extensions=*/false);
++}
++
+ bool DescriptorBuilder::OptionInterpreter::InterpretNonExtensionOptions(
+-    OptionsToInterpret* options_to_interpret) {
+-  return InterpretOptionsImpl(options_to_interpret, /*skip_extensions=*/true);
++    absl::Span<OptionsToInterpret> options_to_interpret) {
++  return InterpretOptionsSpan(options_to_interpret, /*skip_extensions=*/true);
++}
++
++bool DescriptorBuilder::OptionInterpreter::InterpretOptionsSpan(
++    absl::Span<OptionsToInterpret> options_to_interpret, bool skip_extensions) {
++  // PostProcessFieldFeatures() between passes can change field representations
++  // (e.g., ctype) of message types defined in the current file, invalidating
++  // prototypes cached during the non-extension pass. Keep the factory scoped
++  // to each pass so stale prototypes cannot be reused.
++  dynamic_factory_.emplace();
++  bool success = true;
++  for (OptionsToInterpret& opt : options_to_interpret) {
++    if (!InterpretOptionsImpl(&opt, skip_extensions)) {
++      success = false;
++    }
++  }
++  dynamic_factory_.reset();
++  return success;
+ }
+ bool DescriptorBuilder::OptionInterpreter::InterpretOptionsImpl(
+     OptionsToInterpret* options_to_interpret, bool skip_extensions) {
+@@ -10364,7 +10384,8 @@
+   }
+ 
+   const Descriptor* type = option_field->message_type();
+-  std::unique_ptr<Message> dynamic(dynamic_factory_.GetPrototype(type)->New());
++  ABSL_CHECK(dynamic_factory_.has_value());
++  std::unique_ptr<Message> dynamic(dynamic_factory_->GetPrototype(type)->New());
+   ABSL_CHECK(dynamic.get() != nullptr)
+       << "Could not create an instance of " << option_field->DebugString();
+ 

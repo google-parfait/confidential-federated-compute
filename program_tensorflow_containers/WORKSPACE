@@ -72,6 +72,9 @@ http_archive(
 http_archive(
     name = "com_google_protobuf",
     integrity = "sha256-/aEyywyGQAOBwK8f6YvQ93XLVmyyR83MEF40TgCsww4=",
+    patches = [
+        "@confidential_federated_compute//third_party/protobuf:option_interpreter.patch",
+    ],
     repo_mapping = {
         "@abseil-cpp": "@com_google_absl",
         "@system_python": "@python",

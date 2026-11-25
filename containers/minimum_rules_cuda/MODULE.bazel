@@ -65,6 +65,11 @@ archive_override(
     urls = ["https://github.com/project-oak/oak/archive/f07cdb50315cbb3dff7dd4b0e6b9505f425bf42e.tar.gz"],
 )
 
+single_version_override(
+    module_name = "protobuf",
+    patches = ["@@confidential-federated-compute+//third_party/protobuf:option_interpreter.patch"],
+)
+
 archive_override(
     module_name = "rules_cuda",
     integrity = "sha256-1p+wq8uTeO1ZELmj03RqR9cKwpuK+idfkTrF4ZehfBw=",
