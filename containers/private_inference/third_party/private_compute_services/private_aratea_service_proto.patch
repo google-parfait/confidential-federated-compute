@@ -43,7 +43,7 @@
      // This is the only request type that we use directly in pcs.
      DeviceAttestationRequest device_attestation_request =
          6
-@@ -51,4 +49,61 @@
+@@ -51,4 +49,70 @@
          8
          ;
    }
@@ -68,6 +68,15 @@
 +  float temperature = 1;
 +  // The maximum number of output tokens to generate per message.
 +  int32 max_output_tokens = 5;
++  // Config for thinking features.
++  PcsThinkingConfig thinking_config = 10;
++}
++
++// A binary-compatible subset of the ThinkingConfig message.
++message PcsThinkingConfig {
++  // The number of thoughts tokens that the model should generate. Must be in
++  // [-1, 65535]. Set to 0 to disable thinking, or -1 for dynamic thinking.
++  int32 thinking_budget = 1;
 +}
 +
 +// The base structured datatype containing multi-part content of a message.

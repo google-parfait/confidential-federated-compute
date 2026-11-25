@@ -19,6 +19,7 @@
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "fcp/protos/confidentialcompute/private_inference.pb.h"
 #include "src/com/google/android/as/oss/privateinference/api/private_aratea_service.pb.h"
 #include "src/com/google/android/as/oss/privateinference/service/api/private_inference.pb.h"
@@ -44,13 +45,23 @@ class PiClient {
 // TODO: This raw string client will be replaced by the private aratea feature
 // later.
 //
-// `runtime_config.max_generated_tokens` and `runtime_config.temperature_diff`
-// are forwarded to the PI server as the request's generation config; all other
-// RuntimeConfig fields are ignored.
+// `runtime_config.max_generated_tokens`, `runtime_config.temperature_diff`, and
+// `runtime_config.thinking_budget` are forwarded to the PI server as the
+// request's generation config; all other RuntimeConfig fields are ignored.
 absl::StatusOr<std::unique_ptr<PiClient>> CreatePiClient(
     std::string server_address, int feature_name_id,
     const fcp::confidentialcompute::RuntimeConfig& runtime_config =
         fcp::confidentialcompute::RuntimeConfig());
+
+namespace internal {
+
+// Builds a PcsPrivateArateaRequest for the given feature ID, prompt, and
+// runtime configuration. Exposed for testing.
+mdi::privatearatea::PcsPrivateArateaRequest BuildPrivateArateaRequest(
+    int feature_name_id, absl::string_view prompt,
+    const fcp::confidentialcompute::RuntimeConfig& runtime_config);
+
+}  // namespace internal
 
 }  // namespace confidential_federated_compute::private_inference
 

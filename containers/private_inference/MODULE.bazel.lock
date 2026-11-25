@@ -243,11 +243,12 @@
     "https://bcr.bazel.build/modules/opentelemetry-proto/1.8.0/source.json": "407cd35e6a9ec89e542a575f4107bd637813170e68129c8f7471b341824b23e7",
     "https://bcr.bazel.build/modules/opentracing-cpp/1.6.0/MODULE.bazel": "b3925269f63561b8b880ae7cf62ccf81f6ece55b62cd791eda9925147ae116ec",
     "https://bcr.bazel.build/modules/opentracing-cpp/1.6.0/source.json": "da1cb1add160f5e5074b7272e9db6fd8f1b3336c15032cd0a653af9d2f484aed",
+    "https://bcr.bazel.build/modules/package_metadata/0.0.15/MODULE.bazel": "d9c06292392870150584c2f4f84fad636b7012ac7255b2801b424826bad48749",
+    "https://bcr.bazel.build/modules/package_metadata/0.0.15/source.json": "5a9945ed1fa35e1887d6b4c3921758bfd9fa4d78b4be0b9549cab9d6db2d8ea1",
     "https://bcr.bazel.build/modules/package_metadata/0.0.2/MODULE.bazel": "fb8d25550742674d63d7b250063d4580ca530499f045d70748b1b142081ebb92",
     "https://bcr.bazel.build/modules/package_metadata/0.0.3/MODULE.bazel": "77890552ecea9e284b5424c9de827a58099348763a4359e975c359a83d4faa83",
     "https://bcr.bazel.build/modules/package_metadata/0.0.5/MODULE.bazel": "ef4f9439e3270fdd6b9fd4dbc3d2f29d13888e44c529a1b243f7a31dfbc2e8e4",
     "https://bcr.bazel.build/modules/package_metadata/0.0.7/MODULE.bazel": "7adb03933fc8401f495800cf4eafcff0edc6da0ff55c7db223ef69d19f689486",
-    "https://bcr.bazel.build/modules/package_metadata/0.0.7/source.json": "50639625e937b56115012674c797cca7a05a96b4878c87d803c13dc2b31de8a0",
     "https://bcr.bazel.build/modules/platforms/0.0.10/MODULE.bazel": "8cb8efaf200bdeb2150d93e162c40f388529a25852b332cec879373771e48ed5",
     "https://bcr.bazel.build/modules/platforms/0.0.11/MODULE.bazel": "0daefc49732e227caa8bfa834d65dc52e8cc18a2faf80df25e8caea151a9413f",
     "https://bcr.bazel.build/modules/platforms/0.0.4/MODULE.bazel": "9b328e31ee156f53f3c416a64f8491f7eb731742655a47c9eec4703a71644aee",
@@ -473,6 +474,8 @@
     "https://bcr.bazel.build/modules/rules_swift/2.5.0/MODULE.bazel": "6d2fec72be0ad2e1fc2eab536cf9d3fb149037c6d2aa678078f3512c06a819e1",
     "https://bcr.bazel.build/modules/rules_swift/3.1.2/MODULE.bazel": "72c8f5cf9d26427cee6c76c8e3853eb46ce6b0412a081b2b6db6e8ad56267400",
     "https://bcr.bazel.build/modules/rules_swift/3.1.2/source.json": "e85761f3098a6faf40b8187695e3de6d97944e98abd0d8ce579cb2daf6319a66",
+    "https://bcr.bazel.build/modules/sqlite3/3.54.1/MODULE.bazel": "f6910eeb27fbfbe4a49949b49fa48f8d67fab7a44342bd63daa441c24de2f5d6",
+    "https://bcr.bazel.build/modules/sqlite3/3.54.1/source.json": "827b615720f4eac194150eddf823492dd138b8dc73dc5e3c2ebec25cb35e5bae",
     "https://bcr.bazel.build/modules/stardoc/0.5.0/MODULE.bazel": "f9f1f46ba8d9c3362648eea571c6f9100680efc44913618811b58cc9c02cd678",
     "https://bcr.bazel.build/modules/stardoc/0.5.1/MODULE.bazel": "1a05d92974d0c122f5ccf09291442580317cdd859f07a8655f1db9a60374f9f8",
     "https://bcr.bazel.build/modules/stardoc/0.5.3/MODULE.bazel": "c7f6948dae6999bf0db32c1858ae345f112cacf98f174c7a8bb707e41b974f1c",
@@ -640,6 +643,225 @@
         }
       }
     },
+    "@@aspect_rules_js+//npm:extensions.bzl%pnpm": {
+      "general": {
+        "bzlTransitiveDigest": "2pxsYADjokOlSM31tsFe1gpnccI00pyGk75HYDTtNPg=",
+        "usagesDigest": "kbjSw2REjlSC0HtTZDf2p+l/dmiMt3NHLoiWEXYAoQI=",
+        "recordedInputs": [
+          "REPO_MAPPING:aspect_bazel_lib+,bazel_lib bazel_lib+",
+          "REPO_MAPPING:aspect_bazel_lib+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:aspect_bazel_lib+,bazel_tools bazel_tools",
+          "REPO_MAPPING:aspect_bazel_lib+,tar.bzl tar.bzl+",
+          "REPO_MAPPING:aspect_rules_js+,aspect_bazel_lib aspect_bazel_lib+",
+          "REPO_MAPPING:aspect_rules_js+,aspect_rules_js aspect_rules_js+",
+          "REPO_MAPPING:aspect_rules_js+,bazel_features bazel_features+",
+          "REPO_MAPPING:aspect_rules_js+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:aspect_rules_js+,bazel_tools bazel_tools",
+          "REPO_MAPPING:bazel_features+,bazel_features_globals bazel_features++version_extension+bazel_features_globals",
+          "REPO_MAPPING:bazel_features+,bazel_features_version bazel_features++version_extension+bazel_features_version",
+          "REPO_MAPPING:bazel_lib+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:bazel_lib+,bazel_tools bazel_tools",
+          "REPO_MAPPING:tar.bzl+,aspect_bazel_lib aspect_bazel_lib+",
+          "REPO_MAPPING:tar.bzl+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:tar.bzl+,tar.bzl tar.bzl+"
+        ],
+        "generatedRepoSpecs": {
+          "pnpm": {
+            "repoRuleId": "@@aspect_rules_js+//npm/private:npm_import.bzl%npm_import_rule",
+            "attributes": {
+              "package": "pnpm",
+              "version": "8.6.7",
+              "root_package": "",
+              "link_workspace": "",
+              "link_packages": {},
+              "integrity": "sha512-vRIWpD/L4phf9Bk2o/O2TDR8fFoJnpYrp2TKqTIZF/qZ2/rgL3qKXzHofHgbXsinwMoSEigz28sqk3pQ+yMEQQ==",
+              "url": "",
+              "commit": "",
+              "patch_args": [
+                "-p0"
+              ],
+              "patches": [],
+              "custom_postinstall": "",
+              "npm_auth": "",
+              "npm_auth_basic": "",
+              "npm_auth_username": "",
+              "npm_auth_password": "",
+              "lifecycle_hooks": [],
+              "extra_build_content": "load(\"@aspect_rules_js//js:defs.bzl\", \"js_binary\")\njs_binary(name = \"pnpm\", data = glob([\"package/**\"]), entry_point = \"package/dist/pnpm.cjs\", visibility = [\"//visibility:public\"])",
+              "generate_bzl_library_targets": false,
+              "extract_full_archive": true,
+              "exclude_package_contents": [],
+              "system_tar": "auto"
+            }
+          },
+          "pnpm__links": {
+            "repoRuleId": "@@aspect_rules_js+//npm/private:npm_import.bzl%npm_import_links",
+            "attributes": {
+              "package": "pnpm",
+              "version": "8.6.7",
+              "dev": false,
+              "root_package": "",
+              "link_packages": {},
+              "deps": {},
+              "transitive_closure": {},
+              "lifecycle_build_target": false,
+              "lifecycle_hooks_env": [],
+              "lifecycle_hooks_execution_requirements": [
+                "no-sandbox"
+              ],
+              "lifecycle_hooks_use_default_shell_env": false,
+              "bins": {},
+              "package_visibility": [
+                "//visibility:public"
+              ],
+              "replace_package": "",
+              "exclude_package_contents": []
+            }
+          }
+        }
+      }
+    },
+    "@@aspect_tools_telemetry+//:extension.bzl%telemetry": {
+      "general": {
+        "bzlTransitiveDigest": "zFgbaCUuPzH6bIE7CBHBVCqjWSJ78/WNXisdzXaKSnU=",
+        "usagesDigest": "Y3CaNC1KvZVcxfru9q7vhYISHrZ870SDWIFb9pw2elY=",
+        "recordedInputs": [
+          "REPO_MAPPING:aspect_tools_telemetry+,bazel_lib bazel_lib+",
+          "REPO_MAPPING:aspect_tools_telemetry+,bazel_skylib bazel_skylib+",
+          "ENV:ASPECT_TOOLS_TELEMETRY_TEST \\0"
+        ],
+        "generatedRepoSpecs": {
+          "aspect_tools_telemetry_report": {
+            "repoRuleId": "@@aspect_tools_telemetry+//:extension.bzl%tel_repository",
+            "attributes": {
+              "deps": {
+                "aspect_rules_ts": "3.10.1",
+                "aspect_tools_telemetry": "0.5.1"
+              },
+              "last_notice": 0
+            }
+          }
+        },
+        "moduleExtensionMetadata": {
+          "useAllRepos": "NO",
+          "reproducible": false
+        }
+      }
+    },
+    "@@bazel_jar_jar+//internal:non_module_deps.bzl%non_module_deps": {
+      "general": {
+        "bzlTransitiveDigest": "2DAT/HPIZnFlmfKVJ7mhEKbFTxxCePRLSHrVGsnqMsE=",
+        "usagesDigest": "P1uSZ4XnqOp90Mkh0A4Nrjx12Bgz/iceROnSbTsawGk=",
+        "recordedInputs": [
+          "REPO_MAPPING:bazel_features+,bazel_features_globals bazel_features++version_extension+bazel_features_globals",
+          "REPO_MAPPING:bazel_features+,bazel_features_version bazel_features++version_extension+bazel_features_version",
+          "REPO_MAPPING:bazel_jar_jar+,bazel_tools bazel_tools",
+          "REPO_MAPPING:bazel_tools,rules_java rules_java+",
+          "REPO_MAPPING:protobuf+,proto_bazel_features bazel_features+",
+          "REPO_MAPPING:rules_cc+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:rules_cc+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_cc+,cc_compatibility_proxy rules_cc++compatibility_proxy+cc_compatibility_proxy",
+          "REPO_MAPPING:rules_cc+,platforms platforms",
+          "REPO_MAPPING:rules_cc+,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_cc++compatibility_proxy+cc_compatibility_proxy,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_java+,bazel_features bazel_features+",
+          "REPO_MAPPING:rules_java+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:rules_java+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_java+,com_google_protobuf protobuf+",
+          "REPO_MAPPING:rules_java+,compatibility_proxy rules_java++compatibility_proxy+compatibility_proxy",
+          "REPO_MAPPING:rules_java+,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_java++compatibility_proxy+compatibility_proxy,rules_java rules_java+"
+        ],
+        "generatedRepoSpecs": {
+          "jvm__jarjar_abrams_assembly": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_jar",
+            "attributes": {
+              "urls": [
+                "https://repo1.maven.org/maven2/com/eed3si9n/jarjarabrams/jarjar-abrams-assembly_2.12/1.14.0/jarjar-abrams-assembly_2.12-1.14.0.jar"
+              ],
+              "sha256": "75f86f7588136d6ca92d6fed8d58e6666e04c507b71de378527c053fd2a151c2"
+            }
+          },
+          "jvm__com_twitter__scalding_args": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_jar",
+            "attributes": {
+              "urls": [
+                "https://repo1.maven.org/maven2/com/twitter/scalding-args_2.12/0.17.4/scalding-args_2.12-0.17.4.jar"
+              ],
+              "sha256": "e0de2ad8ef344bb11a2854275b5b85a1adb17f0e0ed9740177d940a602cd977b"
+            }
+          }
+        }
+      }
+    },
+    "@@envoy_api+//bazel:extensions.bzl%non_module_deps": {
+      "general": {
+        "bzlTransitiveDigest": "UFC0aaZPFEKCuHmALJFiqdE75Ov8vtaixQt+a26C90k=",
+        "usagesDigest": "jK63LoG8zYrKksbHof5AlM87r2BlrL1DI25Mo2/lR0U=",
+        "recordedInputs": [
+          "REPO_MAPPING:envoy_api+,bazel_tools bazel_tools",
+          "REPO_MAPPING:envoy_api+,envoy_api envoy_api+"
+        ],
+        "generatedRepoSpecs": {
+          "prometheus_metrics_model": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/prometheus/client_model/archive/v0.6.2.tar.gz"
+              ],
+              "sha256": "47c5ea7949f68e7f7b344350c59b6bd31eeb921f0eec6c3a566e27cf1951470c",
+              "strip_prefix": "client_model-0.6.2",
+              "build_file_content": "\nload(\"@envoy_api//bazel:api_build_system.bzl\", \"api_cc_py_proto_library\")\nload(\"@io_bazel_rules_go//proto:def.bzl\", \"go_proto_library\")\n\napi_cc_py_proto_library(\n    name = \"client_model\",\n    srcs = [\n        \"io/prometheus/client/metrics.proto\",\n    ],\n    visibility = [\"//visibility:public\"],\n)\n\ngo_proto_library(\n    name = \"client_model_go_proto\",\n    importpath = \"github.com/prometheus/client_model/go\",\n    proto = \":client_model\",\n    visibility = [\"//visibility:public\"],\n)\n"
+            }
+          },
+          "com_github_chrusty_protoc_gen_jsonschema": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/norbjd/protoc-gen-jsonschema/archive/7680e4998426e62b6896995ff73d4d91cc5fb13c.zip"
+              ],
+              "sha256": "ba3e313b10a1b50a6c1232d994c13f6e23d3669be4ae7fea13762f42bb3b2abc",
+              "strip_prefix": "protoc-gen-jsonschema-7680e4998426e62b6896995ff73d4d91cc5fb13c"
+            }
+          },
+          "envoy_toolshed": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/envoyproxy/toolshed/archive/bazel-v0.3.10.tar.gz"
+              ],
+              "sha256": "4e3ca405ab7990697f75fe75e17f42b3935389afd6fa407eb79700e73de98a11",
+              "strip_prefix": "toolshed-bazel-v0.3.10/bazel"
+            }
+          }
+        }
+      }
+    },
+    "@@googleapis+//:extensions.bzl%switched_rules": {
+      "general": {
+        "bzlTransitiveDigest": "1ZTg77R3Ks/ksx8QMNIoTRJetbJPRlzGFlJa9hoUn+Y=",
+        "usagesDigest": "FwHkjq2xA2kHjsAfLRyTtL6bqulFZZ7+O7JtRe4NQhg=",
+        "recordedInputs": [],
+        "generatedRepoSpecs": {}
+      }
+    },
+    "@@grpc+//bazel:extensions.bzl%exec_properties": {
+      "general": {
+        "bzlTransitiveDigest": "C9g6ijTS6Lje+XG5c5mDmAaZaTlui4lk3BEeg1bUjFA=",
+        "usagesDigest": "hImqXzHtSPMkGXUwrV9REcdKmXLsLUdEto6iGSUMItA=",
+        "recordedInputs": [
+          "REPO_MAPPING:grpc+,bazel_toolchains grpc++_repo_rules+bazel_toolchains"
+        ],
+        "generatedRepoSpecs": {
+          "grpc_custom_exec_properties": {
+            "repoRuleId": "@@grpc++_repo_rules+bazel_toolchains//rules/exec_properties:exec_properties.bzl%_exec_property_sets_repository",
+            "attributes": {
+              "constants_bzl_content": "LARGE_MACHINE = {\"label:os\": \"ubuntu\", \"label:machine_size\": \"large\"}\n"
+            }
+          }
+        }
+      }
+    },
     "@@oak+//bazel:extensions.bzl%oak_toolchains": {
       "general": {
         "bzlTransitiveDigest": "zNMNV+1zz0DNueXm+e6QVY8RZFY+lFA2BoRjSxVyp5M=",
@@ -679,6 +901,27 @@
                 "{\"conditions\":[\"@@oak+//:x86_64-none-setting\",\"@@oak+//:wasm32-none-setting\"],\"name\":\"oak_no_std_crates_index\",\"overrides\":{\"prost\":\"@@oak++load_patched_crates+prost_types_oak_patched//:prost\",\"prost-types\":\"@@oak++load_patched_crates+prost_types_oak_patched//:prost-types\"},\"packages\":[\"acpi\",\"aead\",\"aes-gcm\",\"ahash\",\"aml\",\"anyhow\",\"arrayvec\",\"atomic_refcell\",\"base64\",\"bitflags\",\"bitvec\",\"bytes\",\"chrono\",\"ciborium\",\"const-oid\",\"coset\",\"derive_builder\",\"ecdsa\",\"ed25519-dalek\",\"elf\",\"embedded-io\",\"getrandom\",\"goblin\",\"hashbrown\",\"hex\",\"hkdf\",\"hmac\",\"hpke\",\"itertools\",\"lazy_static\",\"libm\",\"linked_list_allocator\",\"lock_api\",\"log\",\"maplit\",\"mockall\",\"nom\",\"p256\",\"p384\",\"pkcs8\",\"primeorder\",\"prost\",\"rand_chacha\",\"rand_core\",\"regex-lite\",\"rlsf\",\"rsa\",\"rs_merkle\",\"self_cell\",\"serde\",\"serde_json\",\"sha2\",\"sha3\",\"spinning_top\",\"static_assertions\",\"strum\",\"thiserror\",\"uart_16550\",\"virtio-drivers\",\"wasm-bindgen\",\"wasmi\",\"x509-cert\",\"x509-verify\",\"x86_64\",\"zerocopy\",\"zeroize\"]}",
                 "{\"conditions\":[\"@@oak+//:x86_64-none-no_avx-setting\"],\"name\":\"oak_no_std_no_avx_crates_index\",\"overrides\":{\"prost\":\"@@oak++load_patched_crates+prost_types_oak_patched//:prost\",\"prost-types\":\"@@oak++load_patched_crates+prost_types_oak_patched//:prost-types\"},\"packages\":[\"acpi\",\"aead\",\"aes-gcm\",\"ahash\",\"aml\",\"anyhow\",\"arrayvec\",\"atomic_refcell\",\"base64\",\"bitflags\",\"bitvec\",\"bytes\",\"chrono\",\"ciborium\",\"const-oid\",\"coset\",\"derive_builder\",\"ecdsa\",\"ed25519-dalek\",\"elf\",\"getrandom\",\"goblin\",\"hashbrown\",\"hex\",\"hkdf\",\"hmac\",\"hpke\",\"itertools\",\"lazy_static\",\"libm\",\"linked_list_allocator\",\"lock_api\",\"log\",\"maplit\",\"mockall\",\"nom\",\"p256\",\"p384\",\"pkcs8\",\"primeorder\",\"prost\",\"rand_chacha\",\"rand_core\",\"regex-lite\",\"rlsf\",\"rsa\",\"rs_merkle\",\"self_cell\",\"serde\",\"serde_json\",\"sha2\",\"sha3\",\"spinning_top\",\"static_assertions\",\"strum\",\"thiserror\",\"uart_16550\",\"wasmi\",\"x509-cert\",\"x509-verify\",\"x86_64\",\"zerocopy\",\"zeroize\"]}",
                 "{\"conditions\":[\"//conditions:default\"],\"name\":\"oak_std_crates_index\",\"overrides\":{},\"packages\":[\"acpi\",\"aead\",\"aes-gcm\",\"ahash\",\"aml\",\"anyhow\",\"arrayvec\",\"assertables\",\"async-stream\",\"async-trait\",\"atomic_refcell\",\"axum\",\"base64\",\"bincode\",\"bitflags\",\"bitvec\",\"bytes\",\"chrono\",\"ciborium\",\"clap\",\"colored\",\"command-fds\",\"command-group\",\"const-oid\",\"content_inspector\",\"coset\",\"criterion\",\"criterion-macro\",\"derive_builder\",\"ecdsa\",\"ed25519-dalek\",\"elf\",\"env_logger\",\"flate2\",\"futures\",\"futures-util\",\"getrandom\",\"goblin\",\"googletest\",\"h2\",\"hashbrown\",\"hex\",\"hkdf\",\"hmac\",\"hpke\",\"http\",\"http-body-util\",\"humantime-serde\",\"hyper\",\"hyper-util\",\"ignore\",\"indicatif\",\"itertools\",\"jni\",\"jwt\",\"lazy_static\",\"libc\",\"libm\",\"linked_list_allocator\",\"lock_api\",\"log\",\"maplit\",\"mockall\",\"nix\",\"nom\",\"num_cpus\",\"oci-client\",\"oci-spec\",\"once_cell\",\"openssl\",\"opentelemetry\",\"opentelemetry-appender-tracing\",\"opentelemetry-otlp\",\"opentelemetry-proto\",\"opentelemetry_sdk\",\"os_pipe\",\"ouroboros\",\"p256\",\"p384\",\"parking_lot\",\"pem\",\"pkcs8\",\"port_check\",\"portpicker\",\"pprof\",\"primeorder\",\"procfs\",\"proptest\",\"prost\",\"prost-build\",\"prost-derive\",\"prost-types\",\"quote\",\"rand\",\"rand_chacha\",\"rand_core\",\"regex\",\"rcgen\",\"time-macros\",\"time\",\"regex-lite\",\"reqwest\",\"rlsf\",\"rmcp\",\"rmcp-macros\",\"rpassword\",\"rsa\",\"rs_merkle\",\"rtnetlink\",\"rustls\",\"rustls-pemfile\",\"rustls-pki-types\",\"self_cell\",\"semver\",\"serde\",\"serde_json\",\"yaml_serde\",\"sha2\",\"sha3\",\"shlex\",\"signal-hook\",\"signal-hook-tokio\",\"spinning_top\",\"static_assertions\",\"strum\",\"syn\",\"syslog\",\"tar\",\"tempfile\",\"thiserror\",\"tikv-jemallocator\",\"tokei\",\"tokio\",\"tokio-stream\",\"tokio-tungstenite\",\"tokio-util\",\"tokio-vsock\",\"toml\",\"tonic\",\"tonic-prost\",\"tonic-prost-build\",\"tower\",\"tower-http\",\"tracing\",\"tracing-subscriber\",\"tree-sitter\",\"tree-sitter-python\",\"tungstenite\",\"uart_16550\",\"ubyte\",\"ureq\",\"url\",\"walkdir\",\"waki\",\"wasmi\",\"wasmtime\",\"wasmtime-wasi\",\"wasmtime-wasi-http\",\"wit-bindgen\",\"which\",\"x509-cert\",\"x509-verify\",\"x86_64\",\"xz2\",\"zerocopy\",\"zeroize\"]}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "@@oak+//bazel/crates:extensions.bzl%load_patched_crates": {
+      "general": {
+        "bzlTransitiveDigest": "XXzLjl/67JsMqNYHbENuwfn8DWUpZ0591mA5oSAJZLw=",
+        "usagesDigest": "VcSAnitWnaY32ilvigcD6d+v+o2ERjwRWyIsCHppfR4=",
+        "recordedInputs": [
+          "REPO_MAPPING:oak+,bazel_tools bazel_tools"
+        ],
+        "generatedRepoSpecs": {
+          "prost_types_oak_patched": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "build_file_content": "\nload(\"@rules_rust//rust:defs.bzl\", \"rust_library\")\n\npackage(\n    default_visibility = [\"//visibility:public\"],\n)\n\nrust_library(\n    name = \"prost\",\n    compile_data = [\"prost-0.14.3/prost/README.md\"],\n    srcs = glob([\"prost-0.14.3/prost/src/**\"]),\n    deps = [\"@oak_crates_index//:bytes\"],\n    proc_macro_deps = [\"@oak_crates_index//:prost-derive\"],\n    crate_features =[\"derive\", \"prost-derive\"],\n)\n\nrust_library(\n    name = \"prost-types\",\n    srcs = glob([\"prost-0.14.3/prost-types/src/*\"]),\n    proc_macro_deps = [\n        \"@oak_crates_index//:prost-derive\",\n    ],\n    deps = [\n        \"@oak_crates_index//:prost\",\n    ],\n)\n        ",
+              "integrity": "sha256-+mG3Il4QDcYUVhQIOXFDx6e6B7Y8heWFhvTnJ4fzxeU",
+              "urls": [
+                "https://github.com/tokio-rs/prost/archive/refs/tags/v0.14.3.tar.gz"
               ]
             }
           }
@@ -1716,6 +1959,126 @@
         }
       }
     },
+    "@@oak+//oak_containers/kernel/internal:extensions.bzl%nix_kernels": {
+      "general": {
+        "bzlTransitiveDigest": "jFlq8NMWIS3jJJAlSruDq0ePkcoBacOCGz2MJ0dg6X4=",
+        "usagesDigest": "rZqiC8kNUBENTAqDX3b33VZRro7il6QAmY2g9L+fVQQ=",
+        "recordedInputs": [
+          "REPO_MAPPING:oak+,rules_nixpkgs_core rules_nixpkgs_core+",
+          "REPO_MAPPING:rules_nixpkgs_core+,bazel_skylib bazel_skylib+"
+        ],
+        "generatedRepoSpecs": {
+          "nixpkgs": {
+            "repoRuleId": "@@rules_nixpkgs_core+//:nixpkgs.bzl%_nixpkgs_http_repository",
+            "attributes": {
+              "unmangled_name": "nixpkgs",
+              "url": "https://github.com/NixOS/nixpkgs/archive/nixos-24.05-small.tar.gz",
+              "sha256": "3d46aeea9dc75f3e87e70540c3eeb56c9c3a63baa2af8438f8bfab62a73e7337",
+              "strip_prefix": "nixpkgs-nixos-24.05-small"
+            }
+          },
+          "nix_vanilla_linux_kernel": {
+            "repoRuleId": "@@rules_nixpkgs_core+//:nixpkgs.bzl%_nixpkgs_package",
+            "attributes": {
+              "unmangled_name": "nix_vanilla_linux_kernel",
+              "attribute_path": "",
+              "nix_file": "@@oak+//oak_containers/kernel:vanilla-kernel.nix",
+              "nix_file_deps": {
+                "@@oak+//oak_containers/kernel:kernel-common.nix": "//oak_containers/kernel:kernel-common.nix",
+                "@@oak+//oak_containers/kernel:kernel_version.txt": "//oak_containers/kernel:kernel_version.txt",
+                "@@oak+//oak_containers/kernel/configs/6.12.117:minimal.config": "//oak_containers/kernel/configs/6.12.117:minimal.config"
+              },
+              "nix_file_content": "",
+              "repository": "@@oak++nix_kernels+nixpkgs//:nixpkgs",
+              "repositories": {},
+              "build_file_content": "exports_files([\"bzImage\"])",
+              "nixopts": [],
+              "quiet": false,
+              "fail_not_supported": true
+            }
+          },
+          "nix_linux_kernel": {
+            "repoRuleId": "@@rules_nixpkgs_core+//:nixpkgs.bzl%_nixpkgs_package",
+            "attributes": {
+              "unmangled_name": "nix_linux_kernel",
+              "attribute_path": "",
+              "nix_file": "@@oak+//oak_containers/kernel:kernel.nix",
+              "nix_file_deps": {
+                "@@oak+//oak_containers/kernel:kernel-common.nix": "//oak_containers/kernel:kernel-common.nix",
+                "@@oak+//oak_containers/kernel:kernel_version.txt": "//oak_containers/kernel:kernel_version.txt",
+                "@@oak+//oak_containers/kernel/configs/6.12.117:minimal.config": "//oak_containers/kernel/configs/6.12.117:minimal.config",
+                "@@oak+//oak_containers/kernel/patches:virtio-dma.patch": "//oak_containers/kernel/patches:virtio-dma.patch",
+                "@@oak+//oak_containers/kernel/patches:tdx-probe-roms.patch": "//oak_containers/kernel/patches:tdx-probe-roms.patch",
+                "@@oak+//oak_containers/kernel/patches:rtmr-enable.patch": "//oak_containers/kernel/patches:rtmr-enable.patch"
+              },
+              "nix_file_content": "",
+              "repository": "@@oak++nix_kernels+nixpkgs//:nixpkgs",
+              "repositories": {},
+              "build_file_content": "exports_files([\"bzImage\"])",
+              "nixopts": [],
+              "quiet": false,
+              "fail_not_supported": true
+            }
+          }
+        }
+      }
+    },
+    "@@pybind11_bazel+//:internal_configure.bzl%internal_configure_extension": {
+      "general": {
+        "bzlTransitiveDigest": "nS/FQEerFG0c9FJjaMkNFHej0GkzEaBKxsw3KPU3/Fo=",
+        "usagesDigest": "tVQNvLoXMWAbiK39am3yovKGpwINdftfn7RpDyN+JZc=",
+        "recordedInputs": [
+          "REPO_MAPPING:pybind11_bazel+,bazel_tools bazel_tools"
+        ],
+        "generatedRepoSpecs": {
+          "pybind11": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "build_file": "@@pybind11_bazel+//:pybind11-BUILD.bazel",
+              "strip_prefix": "pybind11-2.13.6",
+              "url": "https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz",
+              "integrity": "sha256-4Iy4f0dz2pf6e18DXeh2OrxlbYfVdz5i9toFh9Hw7CA="
+            }
+          }
+        }
+      }
+    },
+    "@@rules_android+//bzlmod_extensions:apksig.bzl%apksig_extension": {
+      "general": {
+        "bzlTransitiveDigest": "2ejqpdsWHwrl9Z0kHTr0sN0esPgTx7Kr+4TieKCSu8Q=",
+        "usagesDigest": "xq6OVkELeJvOgYo3oY/sUBsGFbcqdV+9BYiNgSPV/po=",
+        "recordedInputs": [
+          "REPO_MAPPING:rules_android+,bazel_tools bazel_tools"
+        ],
+        "generatedRepoSpecs": {
+          "apksig": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://android.googlesource.com/platform/tools/apksig/+archive/24e3075e68ebe17c0b529bb24bfda819db5e2f3b.tar.gz",
+              "build_file": "@@rules_android+//bzlmod_extensions:apksig.BUILD"
+            }
+          }
+        }
+      }
+    },
+    "@@rules_android+//bzlmod_extensions:com_android_dex.bzl%com_android_dex_extension": {
+      "general": {
+        "bzlTransitiveDigest": "4pms+dfoPMlywQSHld5LDtpiG/sM9R7NAAV3RUuHIuw=",
+        "usagesDigest": "toF8IFMu98H/VU2p1sfVC5fVXVYJunpbbmtM6tOsQXY=",
+        "recordedInputs": [
+          "REPO_MAPPING:rules_android+,bazel_tools bazel_tools"
+        ],
+        "generatedRepoSpecs": {
+          "com_android_dex": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "url": "https://android.googlesource.com/platform/dalvik/+archive/5a81c499a569731e2395f7c8d13c0e0d4e17a2b6.tar.gz",
+              "build_file": "@@rules_android+//bzlmod_extensions:com_android_dex.BUILD"
+            }
+          }
+        }
+      }
+    },
     "@@rules_android+//rules/android_sdk_repository:rule.bzl%android_sdk_repository_extension": {
       "general": {
         "bzlTransitiveDigest": "NAy+0M15JNVEBb8Tny6t7j3lKqTnsAMjoBB6LJ+C370=",
@@ -1726,6 +2089,164 @@
             "repoRuleId": "@@rules_android+//rules/android_sdk_repository:rule.bzl%_android_sdk_repository",
             "attributes": {}
           }
+        }
+      }
+    },
+    "@@rules_distroless+//apt:extensions.bzl%apt": {
+      "general": {
+        "bzlTransitiveDigest": "pAfSlLirXAHo2maWESOQNX5HZU63EyZvoTv9P2iB6nw=",
+        "usagesDigest": "Szw8JMqnZUdtMUuoVP1JFh8MlW8YMBCfuMCmCFYiTlA=",
+        "recordedInputs": [
+          "REPO_MAPPING:rules_distroless+,bazel_lib bazel_lib+",
+          "REPO_MAPPING:rules_distroless+,bazel_tools bazel_tools"
+        ],
+        "generatedRepoSpecs": {
+          "oak_containers_app_base": {
+            "repoRuleId": "@@rules_distroless+//apt/private:translate_dependency_set.bzl%translate_dependency_set",
+            "attributes": {
+              "depset_name": "oak_containers_app_base",
+              "lock_content": "{\n\t\"dependency_sets\": {\n\t\t\"oak_containers_app_base\": {\n\t\t\t\"sets\": {\n\t\t\t\t\"amd64\": {\n\t\t\t\t\t\"/trixie/base-files:amd64\": \"13.8+deb13u7\"\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t},\n\t\"facts\": {\n\t\t\"trixie-security/main/amd64/Contents/https://snapshot-cloudflare.debian.org/archive/debian-security/20261104T000000Z|https://snapshot.debian.org/archive/debian-security/20261104T000000Z\": \"sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=\",\n\t\t\"trixie-security/main/amd64/Packages/https://snapshot-cloudflare.debian.org/archive/debian-security/20261104T000000Z|https://snapshot.debian.org/archive/debian-security/20261104T000000Z\": \"sha256-eicXDClfaoJVSjIjIFpjr2gXfGK14vrKdM9/ji8JaGg=\",\n\t\t\"trixie/main/amd64/Contents/https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z|https://snapshot.debian.org/archive/debian/20261104T000000Z\": \"sha256-PT5pMJCNsLU/eA3XOXuVieJ9uItZIFwzGnbXbWcm5Bk=\",\n\t\t\"trixie/main/amd64/Packages/https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z|https://snapshot.debian.org/archive/debian/20261104T000000Z\": \"sha256-d3jT4/MDt924zg/nyNV0c6B2xr8ujyQfdUIdI5Y1JJg=\"\n\t},\n\t\"packages\": {\n\t\t\"/trixie/base-files:amd64=13.8+deb13u7\": {\n\t\t\t\"architecture\": \"amd64\",\n\t\t\t\"depends_on\": [\n\t\t\t\t\"/trixie/mawk:amd64=1.3.4.20250131-1\",\n\t\t\t\t\"/trixie/libc6:amd64=2.41-12+deb13u4\",\n\t\t\t\t\"/trixie/libgcc-s1:amd64=14.2.0-19\",\n\t\t\t\t\"/trixie/gcc-14-base:amd64=14.2.0-19\"\n\t\t\t],\n\t\t\t\"filename\": \"pool/main/b/base-files/base-files_13.8+deb13u7_amd64.deb\",\n\t\t\t\"name\": \"base-files\",\n\t\t\t\"section\": \"admin\",\n\t\t\t\"sha256\": \"fcd42bb5cb63f7bfc4326a92541247872206d60a192fdff65ca14eb83ed408b9\",\n\t\t\t\"size\": 88296,\n\t\t\t\"suite\": \"trixie\",\n\t\t\t\"version\": \"13.8+deb13u7\"\n\t\t},\n\t\t\"/trixie/gcc-14-base:amd64=14.2.0-19\": {\n\t\t\t\"architecture\": \"amd64\",\n\t\t\t\"depends_on\": [],\n\t\t\t\"filename\": \"pool/main/g/gcc-14/gcc-14-base_14.2.0-19_amd64.deb\",\n\t\t\t\"name\": \"gcc-14-base\",\n\t\t\t\"section\": \"libs\",\n\t\t\t\"sha256\": \"5b6825de4263824b78c4c51f6476414f3b4e89c2ab63e81dc8b9b5501e867cf6\",\n\t\t\t\"size\": 49432,\n\t\t\t\"suite\": \"trixie\",\n\t\t\t\"version\": \"14.2.0-19\"\n\t\t},\n\t\t\"/trixie/libc6:amd64=2.41-12+deb13u4\": {\n\t\t\t\"architecture\": \"amd64\",\n\t\t\t\"depends_on\": [\n\t\t\t\t\"/trixie/libgcc-s1:amd64=14.2.0-19\",\n\t\t\t\t\"/trixie/gcc-14-base:amd64=14.2.0-19\"\n\t\t\t],\n\t\t\t\"filename\": \"pool/main/g/glibc/libc6_2.41-12+deb13u4_amd64.deb\",\n\t\t\t\"name\": \"libc6\",\n\t\t\t\"section\": \"libs\",\n\t\t\t\"sha256\": \"967aa62605721081c3eb2a17650611a792aa802d76a6511d1840242623d204c9\",\n\t\t\t\"size\": 2846580,\n\t\t\t\"suite\": \"trixie\",\n\t\t\t\"version\": \"2.41-12+deb13u4\"\n\t\t},\n\t\t\"/trixie/libgcc-s1:amd64=14.2.0-19\": {\n\t\t\t\"architecture\": \"amd64\",\n\t\t\t\"depends_on\": [\n\t\t\t\t\"/trixie/libc6:amd64=2.41-12+deb13u4\",\n\t\t\t\t\"/trixie/gcc-14-base:amd64=14.2.0-19\"\n\t\t\t],\n\t\t\t\"filename\": \"pool/main/g/gcc-14/libgcc-s1_14.2.0-19_amd64.deb\",\n\t\t\t\"name\": \"libgcc-s1\",\n\t\t\t\"section\": \"libs\",\n\t\t\t\"sha256\": \"3c71917b490d1a17aed43196a2787a256ecf060526cdb20216a74bedc061b150\",\n\t\t\t\"size\": 72772,\n\t\t\t\"suite\": \"trixie\",\n\t\t\t\"version\": \"14.2.0-19\"\n\t\t},\n\t\t\"/trixie/mawk:amd64=1.3.4.20250131-1\": {\n\t\t\t\"architecture\": \"amd64\",\n\t\t\t\"depends_on\": [\n\t\t\t\t\"/trixie/libc6:amd64=2.41-12+deb13u4\",\n\t\t\t\t\"/trixie/libgcc-s1:amd64=14.2.0-19\",\n\t\t\t\t\"/trixie/gcc-14-base:amd64=14.2.0-19\"\n\t\t\t],\n\t\t\t\"filename\": \"pool/main/m/mawk/mawk_1.3.4.20250131-1_amd64.deb\",\n\t\t\t\"name\": \"mawk\",\n\t\t\t\"section\": \"interpreters\",\n\t\t\t\"sha256\": \"ade14470c4dff8921bca6ca8b1ea20eadc0f2178b48caff3c74534b17a633292\",\n\t\t\t\"size\": 140808,\n\t\t\t\"suite\": \"trixie\",\n\t\t\t\"version\": \"1.3.4.20250131-1\"\n\t\t}\n\t},\n\t\"sources\": {\n\t\t\"trixie\": {\n\t\t\t\"architectures\": [\n\t\t\t\t\"amd64\"\n\t\t\t],\n\t\t\t\"components\": [\n\t\t\t\t\"main\"\n\t\t\t],\n\t\t\t\"types\": [\n\t\t\t\t\"deb\"\n\t\t\t],\n\t\t\t\"uris\": [\n\t\t\t\t\"https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z\",\n\t\t\t\t\"https://snapshot.debian.org/archive/debian/20261104T000000Z\"\n\t\t\t]\n\t\t},\n\t\t\"trixie-security\": {\n\t\t\t\"architectures\": [\n\t\t\t\t\"amd64\"\n\t\t\t],\n\t\t\t\"components\": [\n\t\t\t\t\"main\"\n\t\t\t],\n\t\t\t\"types\": [\n\t\t\t\t\"deb\"\n\t\t\t],\n\t\t\t\"uris\": [\n\t\t\t\t\"https://snapshot-cloudflare.debian.org/archive/debian-security/20261104T000000Z\",\n\t\t\t\t\"https://snapshot.debian.org/archive/debian-security/20261104T000000Z\"\n\t\t\t]\n\t\t}\n\t},\n\t\"version\": 2\n}"
+            }
+          },
+          "trixie_base-files-amd64_13.8-deb13u7_filemap": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_filemap.bzl%deb_filemap",
+            "attributes": {
+              "files": "[\"bin\",\"etc/debian_version\",\"etc/dpkg/origins/debian\",\"etc/host.conf\",\"etc/issue\",\"etc/issue.net\",\"etc/os-release\",\"etc/update-motd.d/10-uname\",\"lib\",\"lib64\",\"sbin\",\"usr/lib/os-release\",\"usr/share/base-files/dot.bashrc\",\"usr/share/base-files/dot.profile\",\"usr/share/base-files/dot.profile.md5sums\",\"usr/share/base-files/info.dir\",\"usr/share/base-files/motd\",\"usr/share/base-files/profile\",\"usr/share/base-files/profile.md5sums\",\"usr/share/base-files/staff-group-for-usr-local\",\"usr/share/common-licenses/AGPL-3.0\",\"usr/share/common-licenses/Apache-2.0\",\"usr/share/common-licenses/Artistic\",\"usr/share/common-licenses/Artistic-2.0\",\"usr/share/common-licenses/BSD\",\"usr/share/common-licenses/BSL-1.0\",\"usr/share/common-licenses/CC-BY-3.0\",\"usr/share/common-licenses/CC-BY-4.0\",\"usr/share/common-licenses/CC-BY-SA-3.0\",\"usr/share/common-licenses/CC-BY-SA-4.0\",\"usr/share/common-licenses/CC0-1.0\",\"usr/share/common-licenses/GFDL\",\"usr/share/common-licenses/GFDL-1.1\",\"usr/share/common-licenses/GFDL-1.2\",\"usr/share/common-licenses/GFDL-1.3\",\"usr/share/common-licenses/GPL\",\"usr/share/common-licenses/GPL-1\",\"usr/share/common-licenses/GPL-2\",\"usr/share/common-licenses/GPL-3\",\"usr/share/common-licenses/LGPL\",\"usr/share/common-licenses/LGPL-2\",\"usr/share/common-licenses/LGPL-2.1\",\"usr/share/common-licenses/LGPL-3\",\"usr/share/common-licenses/MPL-1.1\",\"usr/share/common-licenses/MPL-2.0\",\"usr/share/common-licenses/OFL-1.1\",\"usr/share/doc/base-files/FAQ\",\"usr/share/doc/base-files/NEWS.Debian.gz\",\"usr/share/doc/base-files/README\",\"usr/share/doc/base-files/README.FHS\",\"usr/share/doc/base-files/changelog.gz\",\"usr/share/doc/base-files/copyright\",\"usr/share/lintian/overrides/base-files\"]"
+            }
+          },
+          "trixie_base-files-amd64_13.8-deb13u7": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_import.bzl%deb_import",
+            "attributes": {
+              "target_name": "trixie_base-files-amd64_13.8-deb13u7",
+              "urls": [
+                "https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z/pool/main/b/base-files/base-files_13.8+deb13u7_amd64.deb",
+                "https://snapshot.debian.org/archive/debian/20261104T000000Z/pool/main/b/base-files/base-files_13.8+deb13u7_amd64.deb"
+              ],
+              "sha256": "fcd42bb5cb63f7bfc4326a92541247872206d60a192fdff65ca14eb83ed408b9",
+              "mergedusr": false,
+              "depends_on": [
+                "/trixie/mawk:amd64=1.3.4.20250131-1",
+                "/trixie/libc6:amd64=2.41-12+deb13u4",
+                "/trixie/libgcc-s1:amd64=14.2.0-19",
+                "/trixie/gcc-14-base:amd64=14.2.0-19"
+              ],
+              "dep_filemaps": [
+                "@@rules_distroless++apt+trixie_mawk-amd64_1.3.4.20250131-1_filemap//:filemap.json",
+                "@@rules_distroless++apt+trixie_libc6-amd64_2.41-12-deb13u4_filemap//:filemap.json",
+                "@@rules_distroless++apt+trixie_libgcc-s1-amd64_14.2.0-19_filemap//:filemap.json",
+                "@@rules_distroless++apt+trixie_gcc-14-base-amd64_14.2.0-19_filemap//:filemap.json"
+              ],
+              "package_name": "base-files"
+            }
+          },
+          "trixie_mawk-amd64_1.3.4.20250131-1_filemap": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_filemap.bzl%deb_filemap",
+            "attributes": {
+              "files": "[\"usr/bin/mawk\",\"usr/share/doc/mawk/ACKNOWLEDGMENT\",\"usr/share/doc/mawk/README\",\"usr/share/doc/mawk/changelog.Debian.gz\",\"usr/share/doc/mawk/changelog.gz\",\"usr/share/doc/mawk/copyright\",\"usr/share/doc/mawk/examples/ct_length.awk\",\"usr/share/doc/mawk/examples/decl.awk\",\"usr/share/doc/mawk/examples/deps.awk\",\"usr/share/doc/mawk/examples/eatc.awk\",\"usr/share/doc/mawk/examples/gdecl.awk\",\"usr/share/doc/mawk/examples/hcal\",\"usr/share/doc/mawk/examples/hical\",\"usr/share/doc/mawk/examples/nocomment.awk\",\"usr/share/doc/mawk/examples/primes.awk\",\"usr/share/doc/mawk/examples/qsort.awk\",\"usr/share/man/man1/mawk.1.gz\",\"usr/share/man/man7/mawk-arrays.7.gz\",\"usr/share/man/man7/mawk-code.7.gz\"]"
+            }
+          },
+          "trixie_mawk-amd64_1.3.4.20250131-1": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_import.bzl%deb_import",
+            "attributes": {
+              "target_name": "trixie_mawk-amd64_1.3.4.20250131-1",
+              "urls": [
+                "https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z/pool/main/m/mawk/mawk_1.3.4.20250131-1_amd64.deb",
+                "https://snapshot.debian.org/archive/debian/20261104T000000Z/pool/main/m/mawk/mawk_1.3.4.20250131-1_amd64.deb"
+              ],
+              "sha256": "ade14470c4dff8921bca6ca8b1ea20eadc0f2178b48caff3c74534b17a633292",
+              "mergedusr": false,
+              "depends_on": [
+                "/trixie/libc6:amd64=2.41-12+deb13u4",
+                "/trixie/libgcc-s1:amd64=14.2.0-19",
+                "/trixie/gcc-14-base:amd64=14.2.0-19"
+              ],
+              "dep_filemaps": [
+                "@@rules_distroless++apt+trixie_libc6-amd64_2.41-12-deb13u4_filemap//:filemap.json",
+                "@@rules_distroless++apt+trixie_libgcc-s1-amd64_14.2.0-19_filemap//:filemap.json",
+                "@@rules_distroless++apt+trixie_gcc-14-base-amd64_14.2.0-19_filemap//:filemap.json"
+              ],
+              "package_name": "mawk"
+            }
+          },
+          "trixie_libc6-amd64_2.41-12-deb13u4_filemap": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_filemap.bzl%deb_filemap",
+            "attributes": {
+              "files": "[\"etc/ld.so.conf.d/x86_64-linux-gnu.conf\",\"usr/lib/x86_64-linux-gnu/gconv/ANSI_X3.110.so\",\"usr/lib/x86_64-linux-gnu/gconv/ARMSCII-8.so\",\"usr/lib/x86_64-linux-gnu/gconv/ASMO_449.so\",\"usr/lib/x86_64-linux-gnu/gconv/BIG5.so\",\"usr/lib/x86_64-linux-gnu/gconv/BIG5HKSCS.so\",\"usr/lib/x86_64-linux-gnu/gconv/BRF.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP10007.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1125.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1250.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1251.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1252.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1253.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1254.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1255.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1256.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1257.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP1258.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP737.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP770.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP771.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP772.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP773.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP774.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP775.so\",\"usr/lib/x86_64-linux-gnu/gconv/CP932.so\",\"usr/lib/x86_64-linux-gnu/gconv/CSN_369103.so\",\"usr/lib/x86_64-linux-gnu/gconv/CWI.so\",\"usr/lib/x86_64-linux-gnu/gconv/DEC-MCS.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-AT-DE-A.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-AT-DE.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-CA-FR.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-DK-NO-A.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-DK-NO.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-ES-A.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-ES-S.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-ES.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-FI-SE-A.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-FI-SE.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-FR.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-IS-FRISS.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-IT.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-PT.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-UK.so\",\"usr/lib/x86_64-linux-gnu/gconv/EBCDIC-US.so\",\"usr/lib/x86_64-linux-gnu/gconv/ECMA-CYRILLIC.so\",\"usr/lib/x86_64-linux-gnu/gconv/EUC-CN.so\",\"usr/lib/x86_64-linux-gnu/gconv/EUC-JISX0213.so\",\"usr/lib/x86_64-linux-gnu/gconv/EUC-JP-MS.so\",\"usr/lib/x86_64-linux-gnu/gconv/EUC-JP.so\",\"usr/lib/x86_64-linux-gnu/gconv/EUC-KR.so\",\"usr/lib/x86_64-linux-gnu/gconv/EUC-TW.so\",\"usr/lib/x86_64-linux-gnu/gconv/GB18030.so\",\"usr/lib/x86_64-linux-gnu/gconv/GBBIG5.so\",\"usr/lib/x86_64-linux-gnu/gconv/GBGBK.so\",\"usr/lib/x86_64-linux-gnu/gconv/GBK.so\",\"usr/lib/x86_64-linux-gnu/gconv/GEORGIAN-ACADEMY.so\",\"usr/lib/x86_64-linux-gnu/gconv/GEORGIAN-PS.so\",\"usr/lib/x86_64-linux-gnu/gconv/GOST_19768-74.so\",\"usr/lib/x86_64-linux-gnu/gconv/GREEK-CCITT.so\",\"usr/lib/x86_64-linux-gnu/gconv/GREEK7-OLD.so\",\"usr/lib/x86_64-linux-gnu/gconv/GREEK7.so\",\"usr/lib/x86_64-linux-gnu/gconv/HP-GREEK8.so\",\"usr/lib/x86_64-linux-gnu/gconv/HP-ROMAN8.so\",\"usr/lib/x86_64-linux-gnu/gconv/HP-ROMAN9.so\",\"usr/lib/x86_64-linux-gnu/gconv/HP-THAI8.so\",\"usr/lib/x86_64-linux-gnu/gconv/HP-TURKISH8.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM037.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM038.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1004.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1008.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1008_420.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1025.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1026.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1046.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1047.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1097.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1112.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1122.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1123.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1124.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1129.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1130.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1132.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1133.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1137.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1140.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1141.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1142.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1143.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1144.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1145.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1146.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1147.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1148.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1149.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1153.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1154.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1155.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1156.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1157.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1158.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1160.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1161.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1162.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1163.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1164.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1166.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1167.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM12712.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1364.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1371.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1388.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1390.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM1399.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM16804.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM256.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM273.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM274.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM275.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM277.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM278.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM280.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM281.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM284.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM285.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM290.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM297.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM420.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM423.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM424.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM437.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM4517.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM4899.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM4909.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM4971.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM500.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM5347.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM803.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM850.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM851.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM852.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM855.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM856.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM857.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM858.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM860.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM861.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM862.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM863.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM864.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM865.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM866.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM866NAV.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM868.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM869.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM870.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM871.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM874.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM875.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM880.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM891.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM901.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM902.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM903.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM9030.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM904.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM905.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM9066.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM918.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM921.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM922.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM930.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM932.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM933.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM935.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM937.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM939.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM943.so\",\"usr/lib/x86_64-linux-gnu/gconv/IBM9448.so\",\"usr/lib/x86_64-linux-gnu/gconv/IEC_P27-1.so\",\"usr/lib/x86_64-linux-gnu/gconv/INIS-8.so\",\"usr/lib/x86_64-linux-gnu/gconv/INIS-CYRILLIC.so\",\"usr/lib/x86_64-linux-gnu/gconv/INIS.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISIRI-3342.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO-2022-CN-EXT.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO-2022-CN.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO-2022-JP-3.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO-2022-JP.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO-2022-KR.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO-IR-197.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO-IR-209.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO646.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-1.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-10.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-11.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-13.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-14.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-15.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-16.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-2.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-3.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-4.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-5.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-6.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-7.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-8.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-9.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO8859-9E.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_10367-BOX.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_11548-1.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_2033.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_5427-EXT.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_5427.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_5428.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_6937-2.so\",\"usr/lib/x86_64-linux-gnu/gconv/ISO_6937.so\",\"usr/lib/x86_64-linux-gnu/gconv/JOHAB.so\",\"usr/lib/x86_64-linux-gnu/gconv/KOI-8.so\",\"usr/lib/x86_64-linux-gnu/gconv/KOI8-R.so\",\"usr/lib/x86_64-linux-gnu/gconv/KOI8-RU.so\",\"usr/lib/x86_64-linux-gnu/gconv/KOI8-T.so\",\"usr/lib/x86_64-linux-gnu/gconv/KOI8-U.so\",\"usr/lib/x86_64-linux-gnu/gconv/LATIN-GREEK-1.so\",\"usr/lib/x86_64-linux-gnu/gconv/LATIN-GREEK.so\",\"usr/lib/x86_64-linux-gnu/gconv/MAC-CENTRALEUROPE.so\",\"usr/lib/x86_64-linux-gnu/gconv/MAC-IS.so\",\"usr/lib/x86_64-linux-gnu/gconv/MAC-SAMI.so\",\"usr/lib/x86_64-linux-gnu/gconv/MAC-UK.so\",\"usr/lib/x86_64-linux-gnu/gconv/MACINTOSH.so\",\"usr/lib/x86_64-linux-gnu/gconv/MIK.so\",\"usr/lib/x86_64-linux-gnu/gconv/NATS-DANO.so\",\"usr/lib/x86_64-linux-gnu/gconv/NATS-SEFI.so\",\"usr/lib/x86_64-linux-gnu/gconv/PT154.so\",\"usr/lib/x86_64-linux-gnu/gconv/RK1048.so\",\"usr/lib/x86_64-linux-gnu/gconv/SAMI-WS2.so\",\"usr/lib/x86_64-linux-gnu/gconv/SHIFT_JISX0213.so\",\"usr/lib/x86_64-linux-gnu/gconv/SJIS.so\",\"usr/lib/x86_64-linux-gnu/gconv/T.61.so\",\"usr/lib/x86_64-linux-gnu/gconv/TCVN5712-1.so\",\"usr/lib/x86_64-linux-gnu/gconv/TIS-620.so\",\"usr/lib/x86_64-linux-gnu/gconv/TSCII.so\",\"usr/lib/x86_64-linux-gnu/gconv/UHC.so\",\"usr/lib/x86_64-linux-gnu/gconv/UNICODE.so\",\"usr/lib/x86_64-linux-gnu/gconv/UTF-16.so\",\"usr/lib/x86_64-linux-gnu/gconv/UTF-32.so\",\"usr/lib/x86_64-linux-gnu/gconv/UTF-7.so\",\"usr/lib/x86_64-linux-gnu/gconv/VISCII.so\",\"usr/lib/x86_64-linux-gnu/gconv/gconv-modules\",\"usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache\",\"usr/lib/x86_64-linux-gnu/gconv/gconv-modules.d/gconv-modules-extra.conf\",\"usr/lib/x86_64-linux-gnu/gconv/libCNS.so\",\"usr/lib/x86_64-linux-gnu/gconv/libGB.so\",\"usr/lib/x86_64-linux-gnu/gconv/libISOIR165.so\",\"usr/lib/x86_64-linux-gnu/gconv/libJIS.so\",\"usr/lib/x86_64-linux-gnu/gconv/libJISX0213.so\",\"usr/lib/x86_64-linux-gnu/gconv/libKSC.so\",\"usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2\",\"usr/lib/x86_64-linux-gnu/libBrokenLocale.so.1\",\"usr/lib/x86_64-linux-gnu/libanl.so.1\",\"usr/lib/x86_64-linux-gnu/libc.so.6\",\"usr/lib/x86_64-linux-gnu/libc_malloc_debug.so.0\",\"usr/lib/x86_64-linux-gnu/libdl.so.2\",\"usr/lib/x86_64-linux-gnu/libm.so.6\",\"usr/lib/x86_64-linux-gnu/libmemusage.so\",\"usr/lib/x86_64-linux-gnu/libmvec.so.1\",\"usr/lib/x86_64-linux-gnu/libnsl.so.1\",\"usr/lib/x86_64-linux-gnu/libnss_compat.so.2\",\"usr/lib/x86_64-linux-gnu/libnss_dns.so.2\",\"usr/lib/x86_64-linux-gnu/libnss_files.so.2\",\"usr/lib/x86_64-linux-gnu/libnss_hesiod.so.2\",\"usr/lib/x86_64-linux-gnu/libpcprofile.so\",\"usr/lib/x86_64-linux-gnu/libpthread.so.0\",\"usr/lib/x86_64-linux-gnu/libresolv.so.2\",\"usr/lib/x86_64-linux-gnu/librt.so.1\",\"usr/lib/x86_64-linux-gnu/libthread_db.so.1\",\"usr/lib/x86_64-linux-gnu/libutil.so.1\",\"usr/lib64/ld-linux-x86-64.so.2\",\"usr/share/doc/libc6/NEWS.Debian.gz\",\"usr/share/doc/libc6/NEWS.gz\",\"usr/share/doc/libc6/README.Debian.gz\",\"usr/share/doc/libc6/README.hesiod.gz\",\"usr/share/doc/libc6/changelog.Debian.gz\",\"usr/share/doc/libc6/changelog.gz\",\"usr/share/doc/libc6/copyright\",\"usr/share/lintian/overrides/libc6\"]"
+            }
+          },
+          "trixie_libc6-amd64_2.41-12-deb13u4": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_import.bzl%deb_import",
+            "attributes": {
+              "target_name": "trixie_libc6-amd64_2.41-12-deb13u4",
+              "urls": [
+                "https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z/pool/main/g/glibc/libc6_2.41-12+deb13u4_amd64.deb",
+                "https://snapshot.debian.org/archive/debian/20261104T000000Z/pool/main/g/glibc/libc6_2.41-12+deb13u4_amd64.deb"
+              ],
+              "sha256": "967aa62605721081c3eb2a17650611a792aa802d76a6511d1840242623d204c9",
+              "mergedusr": false,
+              "depends_on": [
+                "/trixie/libgcc-s1:amd64=14.2.0-19",
+                "/trixie/gcc-14-base:amd64=14.2.0-19"
+              ],
+              "dep_filemaps": [
+                "@@rules_distroless++apt+trixie_libgcc-s1-amd64_14.2.0-19_filemap//:filemap.json",
+                "@@rules_distroless++apt+trixie_gcc-14-base-amd64_14.2.0-19_filemap//:filemap.json"
+              ],
+              "package_name": "libc6"
+            }
+          },
+          "trixie_libgcc-s1-amd64_14.2.0-19_filemap": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_filemap.bzl%deb_filemap",
+            "attributes": {
+              "files": "[\"usr/lib/x86_64-linux-gnu/libgcc_s.so.1\",\"usr/share/doc/libgcc-s1\",\"usr/share/lintian/overrides/libgcc-s1\"]"
+            }
+          },
+          "trixie_libgcc-s1-amd64_14.2.0-19": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_import.bzl%deb_import",
+            "attributes": {
+              "target_name": "trixie_libgcc-s1-amd64_14.2.0-19",
+              "urls": [
+                "https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z/pool/main/g/gcc-14/libgcc-s1_14.2.0-19_amd64.deb",
+                "https://snapshot.debian.org/archive/debian/20261104T000000Z/pool/main/g/gcc-14/libgcc-s1_14.2.0-19_amd64.deb"
+              ],
+              "sha256": "3c71917b490d1a17aed43196a2787a256ecf060526cdb20216a74bedc061b150",
+              "mergedusr": false,
+              "depends_on": [
+                "/trixie/libc6:amd64=2.41-12+deb13u4",
+                "/trixie/gcc-14-base:amd64=14.2.0-19"
+              ],
+              "dep_filemaps": [
+                "@@rules_distroless++apt+trixie_libc6-amd64_2.41-12-deb13u4_filemap//:filemap.json",
+                "@@rules_distroless++apt+trixie_gcc-14-base-amd64_14.2.0-19_filemap//:filemap.json"
+              ],
+              "package_name": "libgcc-s1"
+            }
+          },
+          "trixie_gcc-14-base-amd64_14.2.0-19_filemap": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_filemap.bzl%deb_filemap",
+            "attributes": {
+              "files": "[\"usr/share/doc/gcc-14-base/README.Debian.amd64.gz\",\"usr/share/doc/gcc-14-base/TODO.Debian\",\"usr/share/doc/gcc-14-base/changelog.Debian.gz\",\"usr/share/doc/gcc-14-base/copyright\"]"
+            }
+          },
+          "trixie_gcc-14-base-amd64_14.2.0-19": {
+            "repoRuleId": "@@rules_distroless+//apt/private:deb_import.bzl%deb_import",
+            "attributes": {
+              "target_name": "trixie_gcc-14-base-amd64_14.2.0-19",
+              "urls": [
+                "https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z/pool/main/g/gcc-14/gcc-14-base_14.2.0-19_amd64.deb",
+                "https://snapshot.debian.org/archive/debian/20261104T000000Z/pool/main/g/gcc-14/gcc-14-base_14.2.0-19_amd64.deb"
+              ],
+              "sha256": "5b6825de4263824b78c4c51f6476414f3b4e89c2ab63e81dc8b9b5501e867cf6",
+              "mergedusr": false,
+              "depends_on": [],
+              "dep_filemaps": [],
+              "package_name": "gcc-14-base"
+            }
+          }
+        },
+        "moduleExtensionMetadata": {
+          "useAllRepos": "NO",
+          "reproducible": false
         }
       }
     },
@@ -2132,6 +2653,33 @@
         }
       }
     },
+    "@@rules_nixpkgs_core+//extensions:repository.bzl%nix_repo": {
+      "general": {
+        "bzlTransitiveDigest": "dTTtWNdwe7E4j77oKh1mHI1qtdxfaVSGSZa1oPf2QjU=",
+        "usagesDigest": "ZjI2xoiQBaRz3qc721Gc+tXJ9FrSWkJDOJeEXWOvz4Q=",
+        "recordedInputs": [
+          "REPO_MAPPING:rules_nixpkgs_core+,bazel_skylib bazel_skylib+"
+        ],
+        "generatedRepoSpecs": {
+          "nixpkgs": {
+            "repoRuleId": "@@rules_nixpkgs_core+//:nixpkgs.bzl%_nixpkgs_http_repository",
+            "attributes": {
+              "unmangled_name": "nixpkgs",
+              "url": "https://github.com/NixOS/nixpkgs/archive/refs/tags/24.05.tar.gz",
+              "strip_prefix": "nixpkgs-24.05",
+              "integrity": "",
+              "sha256": "911314b81780f26fdaf87e17174210bdbd40c86bac1795212f257cdc236a1e78"
+            }
+          }
+        },
+        "moduleExtensionMetadata": {
+          "explicitRootModuleDirectDeps": [],
+          "explicitRootModuleDirectDevDeps": [],
+          "useAllRepos": "NO",
+          "reproducible": false
+        }
+      }
+    },
     "@@rules_nodejs+//nodejs:extensions.bzl%node": {
       "general": {
         "bzlTransitiveDigest": "q44Ox2Nwogn6OsO0Xw5lhjkd/xmxkvvpwVOn5P4pmHQ=",
@@ -2413,6 +2961,69 @@
           "explicitRootModuleDirectDevDeps": [],
           "useAllRepos": "NO",
           "reproducible": false
+        }
+      }
+    },
+    "@@rules_perl+//perl:extensions.bzl%perl_repositories": {
+      "general": {
+        "bzlTransitiveDigest": "/g08YnyTA1DmKhWrkMHtO+hDxZSiNF6/REQT2R21VAQ=",
+        "usagesDigest": "qSSNDdCNVxNhY36wMndEAFacdhR0ooLTmumfad0km9s=",
+        "recordedInputs": [
+          "REPO_MAPPING:rules_perl+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_perl+,rules_perl rules_perl+"
+        ],
+        "generatedRepoSpecs": {
+          "perl_darwin_arm64": {
+            "repoRuleId": "@@rules_perl+//perl:repo.bzl%perl_download",
+            "attributes": {
+              "strip_prefix": "perl-darwin-arm64",
+              "sha256": "285769f3c50c339fb59a3987b216ae3c5c573b95babe6875a1ef56fb178433da",
+              "urls": [
+                "https://github.com/skaji/relocatable-perl/releases/download/5.36.0.1/perl-darwin-arm64.tar.xz"
+              ]
+            }
+          },
+          "perl_darwin_amd64": {
+            "repoRuleId": "@@rules_perl+//perl:repo.bzl%perl_download",
+            "attributes": {
+              "strip_prefix": "perl-darwin-amd64",
+              "sha256": "63bc5ee36f5394d71c50cca6cafdd333ee58f9eaa40bca63c85f9bd06f2c1fd6",
+              "urls": [
+                "https://github.com/skaji/relocatable-perl/releases/download/5.36.0.1/perl-darwin-amd64.tar.xz"
+              ]
+            }
+          },
+          "perl_linux_amd64": {
+            "repoRuleId": "@@rules_perl+//perl:repo.bzl%perl_download",
+            "attributes": {
+              "strip_prefix": "perl-linux-amd64",
+              "sha256": "3bdffa9d7a3f97c0207314637b260ba5115b1d0829f97e3e2e301191a4d4d076",
+              "urls": [
+                "https://github.com/skaji/relocatable-perl/releases/download/5.36.0.1/perl-linux-amd64.tar.xz"
+              ]
+            }
+          },
+          "perl_linux_arm64": {
+            "repoRuleId": "@@rules_perl+//perl:repo.bzl%perl_download",
+            "attributes": {
+              "strip_prefix": "perl-linux-arm64",
+              "sha256": "6fa4ece99e790ecbc2861f6ecb7b52694c01c2eeb215b4370f16a3b12d952117",
+              "urls": [
+                "https://github.com/skaji/relocatable-perl/releases/download/5.36.0.1/perl-linux-arm64.tar.xz"
+              ]
+            }
+          },
+          "perl_windows_x86_64": {
+            "repoRuleId": "@@rules_perl+//perl:repo.bzl%perl_download",
+            "attributes": {
+              "strip_prefix": "",
+              "sha256": "aeb973da474f14210d3e1a1f942dcf779e2ae7e71e4c535e6c53ebabe632cc98",
+              "urls": [
+                "https://mirror.bazel.build/strawberryperl.com/download/5.32.1.1/strawberry-perl-5.32.1.1-64bit.zip",
+                "https://strawberryperl.com/download/5.32.1.1/strawberry-perl-5.32.1.1-64bit.zip"
+              ]
+            }
+          }
         }
       }
     },
@@ -21603,6 +22214,103 @@
         }
       }
     },
+    "@@rules_rust+//crate_universe/private:internal_extensions.bzl%cu_nr": {
+      "general": {
+        "bzlTransitiveDigest": "j4Trp3+K+pMWo0OKUfpfw4x+hn9kge6hNTMWiaadBsk=",
+        "usagesDigest": "ZmL90WEq2B6/NJ8rtHAqdnDPn+/9xG/GWR5K4UU4tyo=",
+        "recordedInputs": [
+          "REPO_MAPPING:bazel_features+,bazel_features_globals bazel_features++version_extension+bazel_features_globals",
+          "REPO_MAPPING:bazel_features+,bazel_features_version bazel_features++version_extension+bazel_features_version",
+          "REPO_MAPPING:rules_cc+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_cc+,cc_compatibility_proxy rules_cc++compatibility_proxy+cc_compatibility_proxy",
+          "REPO_MAPPING:rules_cc+,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_cc++compatibility_proxy+cc_compatibility_proxy,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_rust+,bazel_features bazel_features+",
+          "REPO_MAPPING:rules_rust+,bazel_skylib bazel_skylib+",
+          "REPO_MAPPING:rules_rust+,bazel_tools bazel_tools",
+          "REPO_MAPPING:rules_rust+,cui rules_rust++cu+cui",
+          "REPO_MAPPING:rules_rust+,rrc rules_rust++i2+rrc",
+          "REPO_MAPPING:rules_rust+,rules_cc rules_cc+",
+          "REPO_MAPPING:rules_rust+,rules_rust rules_rust+"
+        ],
+        "generatedRepoSpecs": {
+          "cargo_bazel_bootstrap": {
+            "repoRuleId": "@@rules_rust+//cargo/private:cargo_bootstrap.bzl%cargo_bootstrap_repository",
+            "attributes": {
+              "srcs": [
+                "@@rules_rust+//crate_universe:src/api.rs",
+                "@@rules_rust+//crate_universe:src/api/lockfile.rs",
+                "@@rules_rust+//crate_universe:src/cli.rs",
+                "@@rules_rust+//crate_universe:src/cli/generate.rs",
+                "@@rules_rust+//crate_universe:src/cli/query.rs",
+                "@@rules_rust+//crate_universe:src/cli/render.rs",
+                "@@rules_rust+//crate_universe:src/cli/splice.rs",
+                "@@rules_rust+//crate_universe:src/cli/vendor.rs",
+                "@@rules_rust+//crate_universe:src/config.rs",
+                "@@rules_rust+//crate_universe:src/context.rs",
+                "@@rules_rust+//crate_universe:src/context/crate_context.rs",
+                "@@rules_rust+//crate_universe:src/context/platforms.rs",
+                "@@rules_rust+//crate_universe:src/lib.rs",
+                "@@rules_rust+//crate_universe:src/lockfile.rs",
+                "@@rules_rust+//crate_universe:src/main.rs",
+                "@@rules_rust+//crate_universe:src/metadata.rs",
+                "@@rules_rust+//crate_universe:src/metadata/cargo_bin.rs",
+                "@@rules_rust+//crate_universe:src/metadata/cargo_tree_resolver.rs",
+                "@@rules_rust+//crate_universe:src/metadata/cargo_tree_rustc_wrapper.bat",
+                "@@rules_rust+//crate_universe:src/metadata/cargo_tree_rustc_wrapper.sh",
+                "@@rules_rust+//crate_universe:src/metadata/dependency.rs",
+                "@@rules_rust+//crate_universe:src/metadata/metadata_annotation.rs",
+                "@@rules_rust+//crate_universe:src/rendering.rs",
+                "@@rules_rust+//crate_universe:src/rendering/template_engine.rs",
+                "@@rules_rust+//crate_universe:src/rendering/templates/module_bzl.j2",
+                "@@rules_rust+//crate_universe:src/rendering/templates/partials/header.j2",
+                "@@rules_rust+//crate_universe:src/rendering/templates/partials/module/aliases_map.j2",
+                "@@rules_rust+//crate_universe:src/rendering/templates/partials/module/deps_map.j2",
+                "@@rules_rust+//crate_universe:src/rendering/templates/partials/module/repo_git.j2",
+                "@@rules_rust+//crate_universe:src/rendering/templates/partials/module/repo_http.j2",
+                "@@rules_rust+//crate_universe:src/rendering/templates/vendor_module.j2",
+                "@@rules_rust+//crate_universe:src/rendering/verbatim/alias_rules.bzl",
+                "@@rules_rust+//crate_universe:src/select.rs",
+                "@@rules_rust+//crate_universe:src/splicing.rs",
+                "@@rules_rust+//crate_universe:src/splicing/cargo_config.rs",
+                "@@rules_rust+//crate_universe:src/splicing/crate_index_lookup.rs",
+                "@@rules_rust+//crate_universe:src/splicing/splicer.rs",
+                "@@rules_rust+//crate_universe:src/test.rs",
+                "@@rules_rust+//crate_universe:src/utils.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/glob.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/label.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/select.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/select_dict.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/select_list.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/select_scalar.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/select_set.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/serialize.rs",
+                "@@rules_rust+//crate_universe:src/utils/starlark/target_compatible_with.rs",
+                "@@rules_rust+//crate_universe:src/utils/symlink.rs",
+                "@@rules_rust+//crate_universe:src/utils/target_triple.rs"
+              ],
+              "binary": "cargo-bazel",
+              "cargo_lockfile": "@@rules_rust+//crate_universe:Cargo.lock",
+              "cargo_toml": "@@rules_rust+//crate_universe:Cargo.toml",
+              "version": "1.95.0",
+              "timeout": 900,
+              "rust_toolchain_cargo_template": "@rust_host_tools//:bin/{tool}",
+              "rust_toolchain_rustc_template": "@rust_host_tools//:bin/{tool}",
+              "compressed_windows_toolchain_names": false
+            }
+          }
+        },
+        "moduleExtensionMetadata": {
+          "explicitRootModuleDirectDeps": [
+            "cargo_bazel_bootstrap"
+          ],
+          "explicitRootModuleDirectDevDeps": [],
+          "useAllRepos": "NO",
+          "reproducible": false
+        }
+      }
+    },
     "@@toolchains_llvm+//toolchain/extensions:distributions.bzl%llvm_distributions": {
       "general": {
         "bzlTransitiveDigest": "RfYsFLwRh0rVY8ReiYgbOEyr84zuBs7mbcHq3dPY3jI=",
@@ -21696,6 +22404,23 @@
     }
   },
   "facts": {
+    "@@aspect_tools_telemetry+//:extension.bzl%telemetry": {
+      "notice_version": "2"
+    },
+    "@@rules_distroless+//apt:extensions.bzl%apt": {
+      "formats": {
+        "trixie-security/main/amd64/Contents/https://snapshot-cloudflare.debian.org/archive/debian-security/20261104T000000Z|https://snapshot.debian.org/archive/debian-security/20261104T000000Z": ".gz",
+        "trixie-security/main/amd64/Packages/https://snapshot-cloudflare.debian.org/archive/debian-security/20261104T000000Z|https://snapshot.debian.org/archive/debian-security/20261104T000000Z": ".xz",
+        "trixie/main/amd64/Contents/https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z|https://snapshot.debian.org/archive/debian/20261104T000000Z": ".gz",
+        "trixie/main/amd64/Packages/https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z|https://snapshot.debian.org/archive/debian/20261104T000000Z": ".xz"
+      },
+      "indices": {
+        "trixie-security/main/amd64/Contents/https://snapshot-cloudflare.debian.org/archive/debian-security/20261104T000000Z|https://snapshot.debian.org/archive/debian-security/20261104T000000Z": "sha256-9h8nvRfeVGJkqlj0DzqvqscCHg72nBf2sbTNdmSgN+w=",
+        "trixie-security/main/amd64/Packages/https://snapshot-cloudflare.debian.org/archive/debian-security/20261104T000000Z|https://snapshot.debian.org/archive/debian-security/20261104T000000Z": "sha256-eicXDClfaoJVSjIjIFpjr2gXfGK14vrKdM9/ji8JaGg=",
+        "trixie/main/amd64/Contents/https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z|https://snapshot.debian.org/archive/debian/20261104T000000Z": "sha256-PT5pMJCNsLU/eA3XOXuVieJ9uItZIFwzGnbXbWcm5Bk=",
+        "trixie/main/amd64/Packages/https://snapshot-cloudflare.debian.org/archive/debian/20261104T000000Z|https://snapshot.debian.org/archive/debian/20261104T000000Z": "sha256-d3jT4/MDt924zg/nyNV0c6B2xr8ujyQfdUIdI5Y1JJg="
+      }
+    },
     "@@rules_go+//go:extensions.bzl%go_sdk": {
       "1.22.4": {
         "aix_ppc64": [
